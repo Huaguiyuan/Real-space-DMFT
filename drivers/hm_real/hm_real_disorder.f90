@@ -1,6 +1,12 @@
 !########################################################
-!     PURPOSE  : 
-!     AUTHORS  : Adriano Amaricci
+!PURPOSE  :solve the disordered (D) Hubbard model (HM) 
+!using Modified Perturbation THeory (MPT), w/ DMFT
+!COMMENTS :
+!disorder realization depends on the parameter int idum:
+!so that different realizations (statistics) are performed 
+!calling this program many times while providing a *different* seed.
+!the result of each calculation is stored in a different dir
+!AUTHORS  : A.Amaricci
 !########################################################
 MODULE COMMON_BROYDN
   USE BROYDEN
@@ -75,8 +81,11 @@ program hmmpt
   if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
   call close_mpi()
 
+
 contains
 
+  !******************************************************************
+  !******************************************************************
 
   !+-------------------------------------------------------------------+
   !PURPOSE  : 
@@ -91,7 +100,7 @@ contains
        endif
        call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
     else
-       sigma=u*(n-0.5d0)
+       n=0.5d0 ; sigma=u*(n-0.5d0)
     endif
   end subroutine setup_initial_sigma
 
@@ -115,9 +124,9 @@ contains
     gf_tmp=zero ; fg=zero
     do i=1+mpiID,L,mpiSIZE
        zeta  = cmplx(wr(i),eps,8) + xmu
-       Gloc  = -H0
+       Gloc  = zero-H0
        do is=1,Ns
-          Gloc(is,is)=Gloc(is,is) + zeta - sigma(is,i) + erandom(is)
+          Gloc(is,is)=Gloc(is,is) + zeta - sigma(is,i) - erandom(is)
        enddo
        call mat_inversion_sym(Gloc,Ns)
        do is=1,Ns
@@ -179,7 +188,6 @@ contains
   subroutine solve_per_site(is)
     complex(8),dimension(:,:),allocatable,save :: sold
     integer :: is
-    character(len=4) :: loop
     siteId=is
     if(.not.allocated(sold))allocate(sold(Ns,1:L))
     sold(is,:)=sigma(is,:)
@@ -191,7 +199,6 @@ contains
     !Evaluate self-energy and put it into Sigma_tmp to be mpi_reduced later on
     sigma_tmp(is,:) = solve_mpt_sopt(fg0(:),wr(:),n,n0,xmu0)
     sigma_tmp(is,:) =weigth*sigma_tmp(is,:) + (1.d0-weigth)*sold(is,:)
-    !sold(is,:)  =sigma(is,:)
   end subroutine solve_per_site
 
   subroutine solve_per_site_debug(is)
@@ -235,11 +242,13 @@ contains
   !PURPOSE  : Print out results
   !+-------------------------------------------------------------------+
   subroutine print_out(converged)
-    real(8)   :: nimp
-    complex(8):: afg(1:L)
-    real(8)   :: nii(Ns)
+    real(8)   :: nimp,nii(Ns)
+    integer,parameter :: M=8192
+    complex(8):: afg(1:L),asig(1:L),fgm(M)
+    real(8)   :: wm(M)
     logical   :: converged
-    integer   :: i
+    integer   :: i,is
+
     character(len=4) :: loop
     if(mpiID==0)then
        nimp=0.d0
@@ -262,8 +271,16 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
           call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1:Ns,:))
           call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1:Ns,:))
-          afg(:)   =sum(fg(1:Ns,1:L),dim=1)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/DOS.disorder.ipt",wr,-dimag(afg(:))/pi,append=TT)
+          afg(:)  = sum(fg(1:Ns,1:L),dim=1)/dble(Ns)
+          asig(:) = sum(sigma(1:Ns,1:L),dim=1)/dble(Ns)
+          call splot(trim(adjustl(trim(name_dir)))//"/DOSav.ipt",wr,-dimag(afg(:))/pi)
+          call splot(trim(adjustl(trim(name_dir)))//"/Sigmaav_iw.ipt",wr,asig)
+          ! wm(:)  = pi/beta*real(2*arange(1,M)-1,8)
+          ! do is=1,Ns
+          !    fgm=zero
+          !    call get_matsubara_gf_from_dos(wr,fg(is,:),fgm(:),beta)
+          !    call splot("Gloc_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,fgm,append=TT)
+          ! enddo
        endif
     endif
     return
@@ -273,6 +290,10 @@ contains
 
   !******************************************************************
   !******************************************************************
+
+
+
+
 
 
   subroutine search_mu(convergence)
@@ -331,6 +352,6 @@ contains
 
 
 
-end program hmmpt
+end program
 
 

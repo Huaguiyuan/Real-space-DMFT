@@ -84,7 +84,8 @@ contains
   !+----------------------------------------------------------------+
   subroutine rdmft_read_input(inputFILE)
     character(len=*) :: inputFILE
-    integer :: i
+    integer          :: i
+    logical          :: control
     !local variables: default values
     Wdis            = 0.5d0
     Nside           = 10
@@ -100,9 +101,7 @@ contains
     !SET SIZE THRESHOLD FOR FILE ZIPPING:
     store_size=1024
 
-    open(10,file=adjustl(trim(inputFILE)))
-    read(10,nml=disorder)
-    close(10)
+
     allocate(help_buffer(23))
     help_buffer=([&
          'NAME',&
@@ -129,6 +128,19 @@ contains
          ' omp_num_threads=[1] -- fix the number of threads in OMP environment.',&
          '  '])
     call parse_cmd_help(help_buffer)
+    inquire(file=adjustl(trim(inputFILE)),exist=control)
+    if(control)then
+       open(10,file=adjustl(trim(inputFILE)))
+       read(10,nml=disorder)
+       close(10)
+    else
+       open(10,file="default."//adjustl(trim(inputFILE)))
+       write(10,nml=disorder)
+       close(10)
+       call abort("can not open INPUT file, dumping a default version in default."//adjustl(trim(inputFILE)))
+    endif
+
+
     call parse_cmd_variable(wdis,"WDIS")
     call parse_cmd_variable(v0trap,"V0TRAP")
     call parse_cmd_variable(a0trap,"A0TRAP")
