@@ -1,5 +1,5 @@
-EXE	=hm_real_disorder
-DIR	=drivers/hm_real
+EXE	=ahm_matsubara_disorder
+DIR	=drivers/ahm_matsubara
 DIREXE	=$(HOME)/.bin
 FC	=mpif90
 

@@ -67,7 +67,7 @@ program hmmpt_matsubara
      iloop=iloop+1
      call start_loop(iloop,nloop,"DMFT-loop")
 
-     !SOLVE G_II (GLOCAL) \FORALL FREQUENCY W\IN[-WMAX,WMAX]
+     !SOLVE G_II (GLOCAL)
      call get_gloc_mpi()
 
      !SOLVE IMPURITY MODEL, FOR ALL LATTICE SITES:

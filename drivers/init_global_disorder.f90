@@ -11,7 +11,6 @@
   !ALLOCATE WORKING ARRAYS:
   !=====================================================================
   Ns    =Nside**2
-  n     =0.5d0
   wmax  =wmax+Wdis
   allocate(erandom(Ns))
   allocate(H0(Ns,Ns))

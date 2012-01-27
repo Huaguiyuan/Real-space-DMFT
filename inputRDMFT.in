@@ -1,0 +1,5 @@
+&DISORDER
+ WDIS		= 0.0
+ NSIDE		= 8
+ PBCFLAG	= T
+/
