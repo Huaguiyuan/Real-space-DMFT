@@ -21,6 +21,10 @@ module RDMFT_VARS_GLOBAL
   USE OMP_LIB
   implicit none
 
+  !Revision software:
+  !=========================================================
+  include "revision.inc"
+
   !Lattice size:
   !=========================================================
   integer,protected :: Nside
@@ -163,6 +167,7 @@ contains
        close(10)
     endif
 
+    call version(revision)
   end subroutine rdmft_read_input
   !******************************************************************
   !******************************************************************
