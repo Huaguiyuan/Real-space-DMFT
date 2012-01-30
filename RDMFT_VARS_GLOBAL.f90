@@ -9,8 +9,6 @@ module RDMFT_VARS_GLOBAL
   USE COMMON_VARS
   USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
-  USE SLPLOT
-  USE SLREAD
   USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_gj,mat_inversion
   USE RANDOM,    ONLY:nrand
   USE STATISTICS
