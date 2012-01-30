@@ -188,12 +188,16 @@ contains
 
 
   subroutine print_sc_out(converged)
-    integer                  :: i,is
-    real(8)                  :: nimp,delta
-    real(8)                  :: nii(Ns),dii(Ns)
-    logical                  :: converged
-    character(len=4)         :: loop
-    real(8),dimension(2,0:L) :: fgt
+    integer                   :: i,j,is,row,col
+    real(8)                   :: nimp,delta
+    real(8),dimension(Ns)     :: nii,dii,cdwii,rii,sii,zii
+    real(8)                   :: mean,sdev,var,skew,kurt
+    real(8),dimension(2,Ns)   :: data_covariance
+    real(8),dimension(2,2)    :: covariance_nd
+    real(8),dimension(2)      :: data_mean,data_sdev
+    logical                   :: converged
+    real(8),dimension(2,0:L)  :: fgt
+    complex(8),dimension(2,L) :: afg,asigma
 
     if(mpiID==0)then
        nimp=0.d0 ; delta=0.d0
@@ -207,19 +211,84 @@ contains
        delta= sum(dii)/dble(Ns)
        print*,"nimp  =",nimp
        print*,"delta =",delta
-       call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta,append=TT)
+       call splot(trim(adjustl(trim(name_dir)))//"/n_deltaVSiloop.data",iloop,nimp,delta,append=TT)
 
-       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.ipt",sigma(1,1:Ns,1:L),wm(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.ipt",sigma(2,1:Ns,1:L),wm(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.ipt",fg(1,1:Ns,1:L),wm(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.ipt",fg(2,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigma(1,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.data",sigma(2,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg(1,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.data",fg(2,1:Ns,1:L),wm(1:L))
 
        if(converged)then
-          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
-          call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.ipt",dii)
+          !Plot observables: n,delta,n_cdw,rho,sigma,zeta
+          do is=1,Ns
+             row=irow(is)
+             col=icol(is)
+             cdwii(is) = (-1.d0)**(row+col)*nii(is)
+             sii(is)   = dimag(sigma(1,is,1))-&
+                  wm(1)*(dimag(sigma(1,is,2))-dimag(sigma(1,is,1)))/(wm(2)-wm(1))
+             rii(is)   = dimag(fg(1,is,1))-&
+                  wm(1)*(dimag(fg(1,is,2))-dimag(fg(1,is,1)))/(wm(2)-wm(1))
+             zii(is)   = 1.d0/( 1.d0 + abs( dimag(sigma(1,is,1))/wm(1) ))
+          enddo
+          rii=abs(rii)
+          sii=abs(sii)
+          zii=abs(zii)
+          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.data",nii)
+          call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.data",dii)
+          call splot(trim(adjustl(trim(name_dir)))//"/cdwVSisite.data",cdwii)
+          call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
+          call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
+          call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
           call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-       endif
+
+          !Plot averaged local functions
+          afg    = sum(fg,dim=2)/dble(Ns)
+          asigma = sum(sigma,dim=2)/dble(Ns)
+          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_iw.data",wm,asigma(1,:))
+          call splot(trim(adjustl(trim(name_dir)))//"/aSelf_iw.data",wm,asigma(2,:))
+          call splot(trim(adjustl(trim(name_dir)))//"/aG_iw.data",wm,afg(1,:))
+          call splot(trim(adjustl(trim(name_dir)))//"/aF_iw.data",wm,afg(2,:))
+
+
+          call get_moments(nii,mean,sdev,var,skew,kurt)
+          data_mean(1)=mean
+          data_sdev(1)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.n.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(dii,mean,sdev,var,skew,kurt)
+          data_mean(2)=mean
+          data_sdev(2)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.delta.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(cdwii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.cdwn.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(zii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.zeta.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(sii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.sigma.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(rii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.rho.data",mean,sdev,var,skew,kurt)
+
+          data_covariance(1,:)=nii
+          data_covariance(2,:)=dii
+          covariance_nd = get_covariance(data_covariance,data_mean)
+          open(10,file=trim(adjustl(trim(name_dir)))//"/covariance_n.delta.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+
+          forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
+          open(10,file=trim(adjustl(trim(name_dir)))//"/correlation_n.delta.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+       end if
+
     end if
     return
   end subroutine print_sc_out

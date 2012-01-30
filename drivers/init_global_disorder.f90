@@ -43,4 +43,3 @@
   do is=1,Ns
      erandom(is)=(2.d0*nrand(idum)-1.d0)*Wdis/2.d0
   enddo
-

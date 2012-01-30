@@ -13,6 +13,7 @@ module RDMFT_VARS_GLOBAL
   USE SLREAD
   USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_gj,mat_inversion
   USE RANDOM,    ONLY:nrand
+  USE STATISTICS
   USE INTEGRATE, ONLY:kronig
   USE TOOLS,     ONLY:fermi,check_convergence
   USE DMFT_IPT
