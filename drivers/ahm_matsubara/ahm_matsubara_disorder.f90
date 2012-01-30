@@ -210,22 +210,15 @@ contains
        call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
        call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta,append=TT)
 
-       write(loop,"(I4)")iloop
-       do i=1,Ns
-          call splot("Gloc_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,fg(1,i,1:L),append=TT)
-          call splot("Floc_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,fg(2,i,1:L),append=TT)
-          call splot("Sigma_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,sigma(1,i,1:L),append=TT)
-          call splot("Self_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,sigma(2,i,1:L),append=TT)
-       enddo
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.ipt",sigma(1,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.ipt",sigma(2,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.ipt",fg(1,1:Ns,1:L),wm(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.ipt",fg(2,1:Ns,1:L),wm(1:L))
 
        if(converged)then
           call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
           call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.ipt",dii)
           call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-          call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1,1:Ns,1:L))
-          call splot(trim(adjustl(trim(name_dir)))//"/LSelf.ipt",sigma(2,1:Ns,1:L))
-          call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1,1:Ns,1:L))
-          call splot(trim(adjustl(trim(name_dir)))//"/LF.ipt",fg(2,1:Ns,1:L))
        endif
     end if
     return
