@@ -1,38 +1,74 @@
-  !     START MPI:
+  !START MPI:
   !=====================================================================
   call start_mpi()
 
-  !     READ INPUT FILES:
+  !READ INPUT FILES:
   !=====================================================================
   call read_input("inputIPT.in")
   call rdmft_read_input("inputRDMFT.in")
 
-  !     ALLOCATE WORKING ARRAYS:
+  !ALLOCATE WORKING ARRAYS:
   !=====================================================================
   Ns    =Nside**2
-  n     =0.5d0
   wmax  =wmax+Wdis
   allocate(etrap(Ns))
   allocate(H0(Ns,Ns))
   allocate(icol(Ns),irow(Ns))
-  allocate(ij2site(Nside,Nside))
+  !definisco dei nuovi boundaries per il mapping da i a isite,jsite
+  !NB Nside e' sempre dispari nel programma
+  allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
+  allocate(nii(Ns))
+  allocate(dii(Ns))
 
 
-  !     CREATE DATA_DIR FOR AND STORE THIS IDUM 
+  if(mpiID==0)write(*,"(A,I9)")"System size =",Ns
+
+
+  !CREATE DATA_DIR FOR AND STORE THIS IDUM 
   name_dir="data_trap"
   if(mpiID==0)then
      call create_data_dir(trim(adjustl(trim(name_dir))))
   endif
 
 
-  !     BUILD THE LATTICE HAMILTONIAN:
+  !BUILD THE LATTICE HAMILTONIAN:
   !=====================================================================
-  call get_tb_hamiltonian
+  call get_tb_hamiltonian(centered=.true.)
 
 
-  !     BUILD THE TRAP:
+  !REDUCE THE PROBLEM BY TAKING INTO ACCOUTN TRAP SYMMETRIES:
+  !=====================================================================
+  if (symmflag) then
+     Nindip = (Nside**2+4*Nside+3)/8
+     if (mpiID==0)write(*,"(A,I4,A)")"Using Trap Symmetries: ",Nindip," independent lattice sites." 
+     allocate(indipsites(Nindip))
+     call get_indip_list
+  endif
+
+
+  !WORKING WITH FIXED TOTAL OCCUPATION:
+  !=====================================================================
+  if (N_wanted==0) then 
+     densfixed=.false.
+     if (mpiID==0) then
+        write(*,*)"======================================================" 
+        write(*,*)"Working at fixed (global) chemical potential"
+        write(*,*)""
+     endif
+  else
+     densfixed=.true.
+     deltan=1.0d0                    ! to be read from input ?
+     if (mpiID==0) then 
+        write(*,"(A,I)")"Working at fixed total particle number",N_wanted
+        write(*,"(A,I)")"Required tolerance over the number of particles",N_tol
+        write(*,"(A,F12.9)")"Starting value for the trap compressibility",chitrap
+        write(*,"(A,F12.9)")"Initial step in mu",deltan
+     endif
+  endif
+
+
+  !BUILD THE TRAP:
   !=====================================================================
   do is=1,Ns
-     etrap(is)= 0.5d0*V0trap*trap_distance_square(is) + a0trap
+     etrap(is)= 0.5d0*V0trap*trap_distance_square(is)
   enddo
-  if(mpiID==0)call splot("fort.53",etrap)

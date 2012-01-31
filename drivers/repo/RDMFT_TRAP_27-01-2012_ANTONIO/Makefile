@@ -1,5 +1,5 @@
-EXE	=ahm_matsubara_trap
-DIR	=drivers/ahm_matsubara
+EXE	= ahmmpt_matsubara_trap_symm
+DIR	= devel
 DIREXE	=$(HOME)/.bin
 FC	=mpif90
 
@@ -10,14 +10,14 @@ include $(HOME)/lib/libdmft.mk
 
 OBJS=RDMFT_VARS_GLOBAL.o
 OBJS_DEB=RDMFT_VARS_GLOBAL_DEB.o
-all: 	version $(OBJS)
+all: 	$(OBJS)
 	@echo " ........... compile: standard ........... "
 	$(FC) $(STD) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT) $(LIBS) $(MODS) 
 	@echo " ...................... done .............................. "
 	@echo ""
-	@echo "created" $(DIREXE)/$(EXE)
+	@echo "created" $(DIREXE)/$(EXE)	
 
-opt: 	version $(OBJS)
+opt: 	$(OBJS)
 	@echo " ........... compile: optimized ........... "
 	$(FC) $(OPT) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT) $(LIBS) $(MODS) 
 	@echo " ...................... done .............................. "
@@ -25,7 +25,7 @@ opt: 	version $(OBJS)
 	@echo "created" $(DIREXE)/$(EXE)
 
 
-debug: 	version $(OBJS_DEB)
+debug: 	$(OBJS_DEB)
 	@echo " ........... compile : debug   ........... "
 	$(FC) $(DEB) $(OBJS_DEB) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT_DEB) $(LIBS_DEB) $(MODS_DEB) 
 	@echo " ...................... done .............................. "
@@ -33,7 +33,7 @@ debug: 	version $(OBJS_DEB)
 	@echo "created" $(DIREXE)/$(EXE)
 
 
-data: 	version $(OBJS)
+data: 	$(OBJS)
 	@echo " ........... compile: get_data ........... "
 	$(FC) $(STD) $(OBJS) $(DIR)/get_data_$(EXE).f90 -o $(DIREXE)/get_data_$(EXE) $(LIBDMFT) $(LIBS) $(MODS) 
 	@echo " ...................... done .............................. "
@@ -48,9 +48,6 @@ RDMFT_VARS_GLOBAL_DEB.o: RDMFT_VARS_GLOBAL.f90
 
 clean: 
 	@echo 'removing *.mod *.o *~'
-	@rm -fv *.mod *.o *~ revision.inc
-
-
-#########################################################################
-include $(HOME)/lib/version.mk
-#########################################################################
+	@rm -f *.mod
+	@rm -f *.o
+	@rm -f *~

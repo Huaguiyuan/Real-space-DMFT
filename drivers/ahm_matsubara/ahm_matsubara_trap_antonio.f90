@@ -1,19 +1,20 @@
+
 !########################################################
 !     PURPOSE  :solve the attractive (A) Trapped (T) Hubbard
 ! model (HM) using Modified Perturbation THeory (MPT), w/ DMFT
-!     AUTHORS  : A.Amaricci, A.Priviter (CNR-IOM)
+!     COMMENTS : 
+!     AUTHORS  : A.Amaricci
 !########################################################
 
-program ahm_matsubara_trap
+program adhmipt_matsubara_trap
   USE RDMFT_VARS_GLOBAL
   implicit none
+  complex(8),allocatable,dimension(:,:,:) :: fg,sigma,gf_tmp,sigma_tmp
+  complex(8),allocatable,dimension(:,:)   :: fg0
+  logical                                 :: converged
   real(8)                                 :: r,delta,delta0,deltan
   real(8)                                 :: n_tot,delta_tot
   integer                                 :: is,esp,lm
-  logical                                 :: converged
-  complex(8),allocatable,dimension(:,:)   :: fg0
-  complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
 
 
   !GLOBAL INITIALIZATION:
@@ -30,56 +31,74 @@ program ahm_matsubara_trap
   allocate(fg(2,Ns,L))
   allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
-  !
   allocate(sigma_tmp(2,Ns,L))
-  allocate(nii_tmp(Ns),dii_tmp(Ns))
-
+  allocate(gf_tmp(2,Ns,L))   ! Questo eventualmente andra cambiato per salvare memoria
 
   !START DMFT LOOP SEQUENCE:
   !==============================================================
   call setup_initial_sc_sigma()
+
+  if (mpiID==0) then
+     print*,""
+     print*,"------------------------------------------------------------"
+  endif
+
   iloop=0 ; converged=.false.
   do while(.not.converged)
      iloop=iloop+1
-     call start_loop(iloop,nloop,"DMFT-loop")
 
-     !SOLVE G_II (GLOCAL) \FORALL FREQUENCIES: 
-     call get_sc_gloc_mpi()        
+     call get_sc_gloc_mpi()        !SOLVE G_II (GLOCAL) \FORALL FREQUENCIES: 
 
-     !SOLVE IMPURITY MODEL,\FORALL LATTICE SITES: DA CAMBIARE USANDO LE SIMMETRIE
-     call solve_sc_impurity_mpi()  
+     call solve_sc_impurity_mpi()  !SOLVE IMPURITY MODEL,\FORALL LATTICE SITES:  DA CAMBIARE USANDO LE SIMMETRIE
 
-     n_tot    = sum(nii)
-     delta_tot= sum(dii)
-     if(mpiID==0)write(*,"(A,F15.9)")"Number of Particles=",n_tot
+     ! the initial sigma should be stored to check convergency at the first iteration..
+     ! not so important.. avoid spurious loops though
+
+     n_tot = sum(nii); delta_tot=sum(dii)
+
+     if (mpiID==0) then
+        print*,""
+        print*,"=============== DMFT-LOOP NUMBER ",iloop," ==============="
+        print*,"Number of Particles",n_tot
+        !      print*,"Global order parameter",delta_tot
+        print*,"=============  DMFT-LOOP CONVERGENCY TEST ================="
+     endif
 
      if (symmflag) then
         converged=check_convergence(reshuffled(sigma(1,:,:)+sigma(2,:,:)),eps_error,Nsuccess,nloop,id=0,tight=.true.)
      else  
         converged=check_convergence(sigma(1,:,:)+sigma(2,:,:),eps_error,Nsuccess,nloop,id=0,tight=.true.) 
      endif
-     if (densfixed) call search_mu(converged)
+
+     ! convergence is evalued only from mpiID=0 and it's set to .true. whenever iloop=nloop
+
+     if (densfixed) call search_mu(converged) 
+
+     if ((iloop==nloop).and.(mpiID==0)) then 
+        write(*,*)"iloop=nloop -> DMFT-LOOP EXIT FORCED"
+        write(*,*)"       CHECK RESIDUAL ERRORS        "                  ! discuss with Adriano about it 
+     endif
+
      call print_sc_out(converged)
-     call end_loop()
+     call msg("============================================",lines=2)
   enddo
-  if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
+
+  if(mpiID==0) then 
+     call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
+     open(10,file="used.inputRDMFT.in")
+     write(10,nml=disorder)
+     close(10)
+  endif
+
   call close_mpi()
 
-
-
-
 contains
-
-
-  !******************************************************************
-  !******************************************************************
-
 
   pure function trap_distance_square(is) result(dist)
     integer,intent(in) :: is
     integer            :: center
     real(8)            :: dist
-    ! The center is in (0,0)
+    ! center=(Ns+1)/2             ! now center is 0,0
     dist=dble(irow(is))**2 + dble(icol(is))**2  ! questa ora non era cambiata
   end function trap_distance_square
 
@@ -91,21 +110,26 @@ contains
 
   subroutine setup_initial_sc_sigma()
     logical :: check1,check2,check
-    if(mpiID==0)then
-       inquire(file="LSigma.ipt",exist=check1)
-       inquire(file="LSelf.ipt",exist=check2)
-       check=check1*check2
-       if(check)then
-          call msg("Reading Self-energy from file:",lines=2)
+    inquire(file="LSigma.ipt",exist=check1)
+    inquire(file="LSelf.ipt",exist=check2)
+    check=check1*check2
+    if(check)then
+       if(mpiID==0)then
+          write(*,*)"Reading Sigma in input:"
           call sread("LSigma.ipt",sigma(1,1:Ns,1:L))
           call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
-       else
-          call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
-          delta=deltasc
-          sigma(1,:,:)=zero ; sigma(2,:,:)=-delta
        endif
+       call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+    else
+       if (mpiID==0) then 
+          print*,"Using Hartree-Fock self-energy"
+          print*,"===================================="
+          print*,""
+       endif
+       !n=0.5d0 ; 
+       delta=deltasc
+       sigma(1,:,:)=zero ; sigma(2,:,:)=-delta
     endif
-    call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
   end subroutine setup_initial_sc_sigma
 
 
@@ -114,11 +138,12 @@ contains
   !******************************************************************
 
   subroutine get_sc_gloc_mpi()
-    complex(8) :: Gloc(2*Ns,2*Ns),gf_tmp(2,Ns,L)
+    complex(8) :: Gloc(2*Ns,2*Ns)
     integer    :: i,is
     call msg("Get local GF: (ETA --> fort.999)",id=0)
     call start_timer
     fg=zero ; gf_tmp=zero
+
     do i=1+mpiID,L,mpiSIZE          ! parallelizziamo sulle frequenze... TODO memory proximity
        Gloc=zero
        Gloc(1:Ns,1:Ns)          = -H0
@@ -127,7 +152,7 @@ contains
           Gloc(is,is)      =  xi*wm(i)-a0trap-sigma(1,is,i)-etrap(is)
           Gloc(Ns+is,Ns+is)= -conjg(Gloc(is,is))
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,-i)!sigma(2,is,i)!this should be a simmetry in Matsubara!
+          Gloc(Ns+is,is)   = -sigma(2,is,-i)
        enddo
        call mat_inversion_sym(Gloc,2*Ns)
        forall(is=1:Ns)
@@ -147,47 +172,83 @@ contains
   !******************************************************************
 
 
-  !Usiamo le simmetrie per risolvere solo siti non equivalenti
+
   subroutine solve_sc_impurity_mpi()
     integer    :: is,i
-    call msg("Solve impurity:")
-    sigma_tmp = zero      ! dummy variable for reduce purposes.. 
-    nii_tmp   = 0.d0      ! density profile to be calculated on the fly 
-    dii_tmp   = 0.d0      ! delta profile to be calculated on the fly 
-    !
+    real(8)    :: nii_(Ns),dii_(Ns)
+    !   complex(8) :: sigma_tmp(2,Ns,L)        ! now a global variable to be seen from solve_per_site
+    call msg("Solve impurity: (ETA --> fort.998)")
     call start_timer
-    if(.not.symmflag)then       ! tutti i siti sono inequivalenti
+
+    sigma_tmp=zero              ! dummy variable for reduce purposes.. 
+    nii=0.d0; nii_=0.d0         ! density profile to be calculated on the fly 
+    dii=0.d0; dii_=0.d0         ! delta profile to be calculated on the fly 
+
+    ! IMPLEMENTIAMO LE SIMMETRIE PER RISOLVERE SOLO SITI NON EQUIVALENTI
+
+    if (.not.symmflag) then   ! tutti i siti sono inequivalenti
+
        do is=1+mpiID,Ns,mpiSIZE
           call solve_per_site(is)
           call eta(is,Ns,998)
        enddo
-    else                        ! uso solo quelli indipendenti e li simmetrizzo
+
+    else                      ! uso solo quelli indipendenti e li simmetrizzo
+
        do is=1+mpiID,Nindip,mpiSIZE
           call solve_per_site(indipsites(is))
-          call eta(is,Nindip,998)
+          !          call eta(indipsites(is),Nindip,998)
        enddo
-       !ho calcolato le self-energie per i siti non equivalenti
+
+       !      ho calcolato le self-energie per i siti non equivalenti
+
        do i=1,L
-          call symmetrize(sigma_tmp(1,:,i))
-          call symmetrize(sigma_tmp(2,:,i))
+          call c_simmetrize(sigma_tmp(1,:,i))
+          call c_simmetrize(sigma_tmp(2,:,i))
        enddo
-       !ho implementato le simmetrie del cubo sulle self-energie 
-       !adesso implementa le simmetrie del cubo sul profilo di densita' e delta
-       call symmetrize(nii_tmp)
-       call symmetrize(dii_tmp)
+
+       !      ho implementato le simmetrie del cubo sulle self-energie 
+
+       !       if (mpiID==0) then
+       !       print*,"density profile prima del simmetrize in mpiID=",mpiID
+       !       do is=1,Ns
+       !         write(*,*)is,nii(is)
+       !       enddo
+       !       endif 
+
+       call r_simmetrize(nii)
+       call r_simmetrize(dii)
+
+       !      implementa le simmetrie del cubo sul profilo di densita' e delta
+
     endif
+
+    sigma=0 
+
+    ! raccolgo tutte le informazioni 
+
     call stop_timer
-    !
-    sigma=zero ; nii=zero ; dii=zero
     call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+    call MPI_REDUCE(nii,nii_,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+    call MPI_REDUCE(dii,dii_,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
     call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
-    !
-    call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-    call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
-    !
-    call MPI_REDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-    call MPI_BCAST(dii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
-    !nii=nii_ ; dii=dii_
+    call MPI_BCAST(nii_,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
+    call MPI_BCAST(dii_,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
+    nii=nii_ ; dii=dii_
+
+    !       write(129,*)"after reduce nonsymm per il sito", 1,"sigma vale"
+    !       do i=1,L
+    !          write(129,"(3(F10.5))") wm(i),real(sigma(1,1,i),8),real(sigma(2,1,i),8)
+    !       enddo
+
+    !        if (mpiID==0) then
+    !       print*,"density profile finale in mpiID=",mpiID
+    !       do is=1,Ns
+    !         write(*,*)is,nii(is)
+    !       enddo
+    !       endif 
+
+
   end subroutine solve_sc_impurity_mpi
 
 
@@ -203,31 +264,51 @@ contains
     complex(8),dimension(:,:,:),allocatable,save :: sold
     complex(8),dimension(2,L)                    :: calG
     real(8),dimension(2,0:L)                     :: fgt,fg0t
-    real(8)                                      :: n,n0,delta,delta0
+    real(8) :: n,n0,delta,delta0
 
     if(.not.allocated(sold))allocate(sold(2,Ns,L))
     sold(:,is,:)  =  sigma(:,is,:)
+
     call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
     call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
     n    = -real(fgt(1,L),8) ; delta= -u*fgt(2,0)
-    !
-    nii_tmp(is)=2.d0*n; dii_tmp(is)=delta
-    !
-    fg0=zero ; calG=zero
+
+    nii(is)=2.d0*n; dii(is)=delta
+
+    ! CHECK!!! dentro SIGMA e' zero ??? [SOLVED]
+
+    !    if(is==81)then
+    !       write(127,*)"dentro solve per site per il sito ",is, "sigma vale"
+    !       do i=1,L
+    !       write(127,"(3(F10.5))") wm(i),real(sigma(1,is,i),8),real(sigma(2,is,i),8)
+    !       enddo
+    !    endif 
+
+
+
+    calG=zero ; fg0=zero
     det       = abs(fg(1,is,:))**2    + fg(2,is,:)**2
     fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) - U*(n-0.5d0)
     fg0(2,:)  = fg(2,is,:)/det        + sigma(2,is,:) + delta
+
     det       =  abs(fg0(1,:))**2 + fg0(2,:)**2
     calG(1,:) =  conjg(fg0(1,:))/det
     calG(2,:) =  fg0(2,:)/det
+
     call fftgf_iw2tau(calG(1,:),fg0t(1,:),beta)
     call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
     n0=-real(fg0t(1,L)) ; delta0= -u*fg0t(2,0)
-    write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
-    !
+    write(750,"(I4,4(f16.12))",advance="yes")is,n,n0,delta,delta0
     sigma_tmp(:,is,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
     sigma_tmp(:,is,:) =  weigth*sigma_tmp(:,is,:) + (1.d0-weigth)*sold(:,is,:)
-    !
+
+    !    if(is==81) then
+    !       write(128,*)"dentro solve per site per il sito ", is, "sigma_tmp vale"
+    !       do i=1,L
+    !       write(128,"(3(F10.5))") wm(i),real(sigma_tmp(1,is,i),8),real(sigma_tmp(2,is,i),8)
+    !       enddo
+    !    endif 
+
   end subroutine solve_per_site
 
 
@@ -411,37 +492,112 @@ contains
     return
   end subroutine print_sc_out
 
+  !+----------------------------------------------------------------+
+  !PROGRAM  : 
+  !TYPE     : subroutine
+  !PURPOSE  : implement the trap simmetries on a real
+  !         : vector variable with Ns components 
+  !+----------------------------------------------------------------+
+  subroutine r_simmetrize(vec)
+    integer                             :: row,col
+    real(8), dimension(:),intent(INOUT) :: vec
 
+    !   assi cartesiani e diagonale  degeneracy=4
 
+    do col=1,Nside/2
+       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
+       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site(col, -col))   =vec(ij2site(col,col))
+       vec(ij2site(-col, col))   =vec(ij2site(col,col))
+       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
+    enddo
 
-  !******************************************************************
-  !******************************************************************
+    !   nel semipiano e fuori dalle linee sopramenzionate 
+    !   degeneracy =8 
 
+    do col=2,Nside/2    
+       do row=1,col-1
+          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
+          vec(ij2site( row,-col))  =vec(ij2site(row,col))
+          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
+          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
+          vec(ij2site(-col, row))  =vec(ij2site(row,col))
+          vec(ij2site( col,-row))  =vec(ij2site(row,col))
+          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
+       enddo
+    enddo
 
+  end subroutine r_simmetrize
+
+  !+----------------------------------------------------------------+
+  !PROGRAM  : 
+  !TYPE     : subroutine
+  !PURPOSE  : implement the trap simmetries on a complex
+  !         : vector variable with Ns components 
+  !+----------------------------------------------------------------+
+  subroutine c_simmetrize(vec)
+    integer               :: row,col
+    complex(8), dimension(:) :: vec
+
+    !   assi cartesiani e diagonale  degeneracy=4
+
+    do col=1,Nside/2
+       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
+       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site(col, -col))   =vec(ij2site(col,col))
+       vec(ij2site(-col, col))   =vec(ij2site(col,col))
+       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
+    enddo
+
+    !   nel semipiano e fuori dalle linee sopramenzionate 
+    !   degeneracy =8 
+
+    do col=2,Nside/2    
+       do row=1,col-1
+          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
+          vec(ij2site( row,-col))  =vec(ij2site(row,col))
+          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
+          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
+          vec(ij2site(-col, row))  =vec(ij2site(row,col))
+          vec(ij2site( col,-row))  =vec(ij2site(row,col))
+          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
+       enddo
+    enddo
+
+    !******************************************************************
+    !******************************************************************
+
+  end subroutine c_simmetrize
 
   function reshuffled(m_in) result(m_out)
     integer                               :: i
     complex(8), dimension(Ns,L)           :: m_in
     complex(8), dimension(Nindip,L)       :: m_out
+
     do i=1,Nindip
        m_out(i,:)=m_in(indipsites(i),:)
     enddo
+
   end function reshuffled
 
 
   !******************************************************************
   !******************************************************************
 
-
   subroutine search_mu(convergence)
     integer, save         ::nindex
     integer               ::nindex1
     real(8),save          ::muold,N_old  
     logical,intent(inout) ::convergence
+
     if(mpiID==0)then
        nindex1=nindex  !! save old value of the increment sign
+
        !      muold=a0trap    !! implement to extrapulate a sound value of chitrap
        !      N_old=N_old     !! from the same procedure to fix the density
+
        if((n_tot >= n_wanted+n_tol))then
           nindex=-1
        elseif(n_tot <= n_wanted-n_tol)then
@@ -481,4 +637,4 @@ contains
 
   !******************************************************************
   !******************************************************************
-end program ahm_matsubara_trap
+end program adhmipt_matsubara_trap

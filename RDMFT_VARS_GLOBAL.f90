@@ -5,7 +5,6 @@
 !     AUTHORS  : Adriano Amaricci
 !###############################################################
 module RDMFT_VARS_GLOBAL
-  !LOAD MODULE FROM LIBRARY:
   USE COMMON_VARS
   USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
@@ -26,7 +25,7 @@ module RDMFT_VARS_GLOBAL
   !Lattice size:
   !=========================================================
   integer,protected :: Nside
-  integer           :: Ns
+  integer           :: Ns,Nindip
 
   !Frequency and time arrays:
   !=========================================================
@@ -38,31 +37,54 @@ module RDMFT_VARS_GLOBAL
   !=========================================================
   integer,dimension(:),allocatable   :: icol,irow
   integer,dimension(:,:),allocatable :: ij2site
+  integer,dimension(:), allocatable  :: indipsites !***to be renamed***
   real(8),dimension(:,:),allocatable :: H0,Id
+
+
+  !Local density and order parameter profiles:
+  !=========================================================
+  real(8),dimension(:),allocatable   :: nii,dii
 
 
   !Gloabl variables
   !=========================================================
   real(8) :: Wdis               !Disorder strength
   integer :: idum               !disorder seed
-  real(8) :: a0trap,V0trap
+  real(8) :: a0trap             !Trap bottom
+  real(8) :: V0trap             !Trap curvature in x,y directions (assumed circular symmetry)
+  !***To be renamed***
+  integer :: N_wanted           !Required number of particles for canonical calculations [set 0 for fixmu]
+  real(8) :: N_tol              !Tolerance over the number of particles
+  real(8) :: chitrap            !Tentative value for the global trap compressibility dN/d(mu_{tot})
+  !real(8) :: gammatrap          !Trap_asymmetry in the third dimension (not implemented yet)
+  !integer :: dim                !Spatial dimension (1,2,3) not implemented yet     
+
 
   !Other variables:
   !=========================================================
   character(len=20)                  :: name_dir
   logical                            :: pbcflag
+  logical                            :: symmflag
+  logical                            :: densfixed
+
 
   !Random energies
   !=========================================================
   real(8),dimension(:),allocatable   :: erandom,etrap
 
+
   !Fix density
   !=========================================================
-  real(8) :: nread,nerror
-  real(8) :: ndelta,ndelta1
-  integer :: nindex,nindex1
+  real(8) :: nread,nerror,ndelta
+  integer :: nindex
 
-  !Namelists:
+
+  interface symmetrize
+     module procedure c_symmetrize,r_symmetrize
+  end interface symmetrize
+
+
+  !Namelist:
   !=========================================================
   namelist/disorder/&
        Wdis,     &
@@ -73,6 +95,10 @@ module RDMFT_VARS_GLOBAL
        nread,    &
        nerror,   &
        ndelta,   &
+       symmflag, &
+       N_wanted, &
+       N_tol,    &
+       chitrap,  &   
        pbcflag,  &
        omp_num_threads
 
@@ -81,8 +107,6 @@ module RDMFT_VARS_GLOBAL
 contains
 
   !+----------------------------------------------------------------+
-  !PROGRAM  : READinput
-  !TYPE     : subroutine
   !PURPOSE  : Read input file
   !+----------------------------------------------------------------+
   subroutine rdmft_read_input(inputFILE)
@@ -97,15 +121,19 @@ contains
     nread           = 0.d0
     nerror          = 1.d-4
     ndelta          = 0.1d0
-    omp_num_threads =1
+    symmflag        =.false.
+    N_wanted        = Nside**2/2
+    N_tol           = 0.1d0
+    chitrap         = 0.1d0 
+    omp_num_threads = 1
     pbcflag         = .true.
-    idum            =1234567
+    idum            = 1234567
+
 
     !SET SIZE THRESHOLD FOR FILE ZIPPING:
     store_size=1024
 
-
-    allocate(help_buffer(23))
+    allocate(help_buffer(27))
     help_buffer=([&
          'NAME',&
          '  xxx_disorder/trap',&
@@ -126,11 +154,17 @@ contains
          ' nread=[0.0]   -- density value for chemical potential search.',&
          ' ndelta=[0.1]  -- starting value for chemical potential shift.',&
          ' nerror=[1.d-4]-- max error in adjusting chemical potential. ',&
+         ' symmflag=[T]  -- Enforce trap cubic symmetry in the xy-plane.',&
+         ' n_wanted=[0]  -- Required number of particles in the trap. Fix to 0 (default) for mufixed',&
+         ' n_tol=[0.1]   -- Tolerance over the total density',&
+         ' chitrap=[0.1] -- Tentative value of the global trap compressibility',&
          ' pbcflag=[T]   -- periodic boundary conditions.',&
          ' idum=[1234567]-- initial seed for the random variable sample.',&
          ' omp_num_threads=[1] -- fix the number of threads in OMP environment.',&
          '  '])
     call parse_cmd_help(help_buffer)
+
+    !Read input file (if any)
     inquire(file=adjustl(trim(inputFILE)),exist=control)
     if(control)then
        open(10,file=adjustl(trim(inputFILE)))
@@ -140,16 +174,20 @@ contains
        open(10,file="default."//adjustl(trim(inputFILE)))
        write(10,nml=disorder)
        close(10)
-       call abort("can not open INPUT file, dumping a default version in default."//adjustl(trim(inputFILE)))
+       call abort("can not open INPUT file, dumping a default version in +default."//adjustl(trim(inputFILE)))
     endif
 
-
+    !Parse cmd.line arguments (if any)
     call parse_cmd_variable(wdis,"WDIS")
     call parse_cmd_variable(v0trap,"V0TRAP")
     call parse_cmd_variable(a0trap,"A0TRAP")
     call parse_cmd_variable(Nside,"NSIDE")
     call parse_cmd_variable(nread,"NREAD")
     call parse_cmd_variable(nerror,"NERROR")
+    call parse_cmd_variable(n_wanted,"NWANTED")
+    call parse_cmd_variable(n_tol,"NTOL")
+    call parse_cmd_variable(chitrap,"CHITRAP")
+    call parse_cmd_variable(symmflag,"SYMMFLAG")
     call parse_cmd_variable(pbcflag,"PBCFLAG")
     call parse_cmd_variable(omp_num_threads,"OMP_NUM_THREADS")
     call parse_cmd_variable(idum,"IDUM")
@@ -165,8 +203,21 @@ contains
        close(10)
     endif
 
+
+    if(mod(Nside,2)==0)then
+       Nside=Nside-1
+       if(mpiID==0)then 
+          write(*,"(A)")bg_red("Nside has to be odd!")
+          write(*,"(A,I,A)")bg_red("Using Nside="),Nside,bg_red(" instead")
+       endif
+    endif
+
     call version(revision)
   end subroutine rdmft_read_input
+
+
+
+
   !******************************************************************
   !******************************************************************
   !******************************************************************
@@ -175,20 +226,27 @@ contains
 
 
   !+----------------------------------------------------------------+
-  !PROGRAM  : 
-  !TYPE     : subroutine
   !PURPOSE  : Build tight-binding Hamiltonian
   !+----------------------------------------------------------------+
-  subroutine get_tb_hamiltonian()
-    integer :: i,jj,j,k,row,col,link(4)
+  subroutine get_tb_hamiltonian(centered)
+    integer          :: i,jj,j,k,row,col,link(4)
+    logical,optional :: centered
+    logical          :: symm
+    symm=.false.;if(present(centered))symm=centered
     H0=0.d0
     do row=0,Nside-1
        do col=0,Nside-1
           i=col+row*Nside+1
-          irow(i)=row+1
-          icol(i)=col+1
-          ij2site(row+1,col+1)=i
-
+          if(.not.symm)then
+             irow(i)=row+1
+             icol(i)=col+1
+             ij2site(row+1,col+1)=i
+          else
+             irow(i)=-Nside/2+row                     ! cambio la tabella i -> isite,jsite
+             icol(i)=-Nside/2+col                     ! per farla simmetrica.. aiutera' 
+             ij2site(row-Nside/2,col-Nside/2)=i       ! a implementare le simmetrie
+          endif
+          !
           if(pbcflag)then
              !HOPPING w/ PERIODIC BOUNDARY CONDITIONS
              link(1)= row*Nside+1              + mod(col+1,Nside)  ;
@@ -208,8 +266,100 @@ contains
        enddo
     enddo
   end subroutine get_tb_hamiltonian
+
+
+
   !******************************************************************
   !******************************************************************
   !******************************************************************
+
+
+
+  !+----------------------------------------------------------------+
+  !PURPOSE : build the list of the indipendent sites (1/8 of the square)
+  !+----------------------------------------------------------------+
+  subroutine get_indip_list()
+    integer :: i,row,col,istate,jstate
+    i=0
+    do col=0,Nside/2
+       do row=0,col
+          i= i+1
+          indipsites(i)=ij2site(row,col)
+       enddo
+    enddo
+  end subroutine get_indip_list
+
+
+
+  !******************************************************************
+  !******************************************************************
+  !******************************************************************
+
+
+
+  !+----------------------------------------------------------------+
+  !PURPOSE : implement the trap simmetries on a real vector variable 
+  ! with Ns components 
+  !+----------------------------------------------------------------+
+  subroutine r_symmetrize(vec)
+    integer                             :: row,col
+    real(8), dimension(:),intent(INOUT) :: vec
+    !assi cartesiani e diagonale  degeneracy=4
+    do col=1,Nside/2
+       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
+       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site(col, -col))   =vec(ij2site(col,col))
+       vec(ij2site(-col, col))   =vec(ij2site(col,col))
+       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
+    enddo
+    !nel semipiano e fuori dalle linee sopramenzionate degeneracy =8 
+    do col=2,Nside/2    
+       do row=1,col-1
+          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
+          vec(ij2site( row,-col))  =vec(ij2site(row,col))
+          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
+          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
+          vec(ij2site(-col, row))  =vec(ij2site(row,col))
+          vec(ij2site( col,-row))  =vec(ij2site(row,col))
+          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
+       enddo
+    enddo
+  end subroutine r_symmetrize
+  !+----------------------------------------------------------------+
+  subroutine c_symmetrize(vec)
+    integer                                :: row,col
+    complex(8), dimension(:),intent(INOUT) :: vec
+    !assi cartesiani e diagonale  degeneracy=4
+    do col=1,Nside/2
+       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
+       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
+       vec(ij2site(col, -col))   =vec(ij2site(col,col))
+       vec(ij2site(-col, col))   =vec(ij2site(col,col))
+       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
+    enddo
+    !nel semipiano e fuori dalle linee sopramenzionate degeneracy =8 
+    do col=2,Nside/2    
+       do row=1,col-1
+          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
+          vec(ij2site( row,-col))  =vec(ij2site(row,col))
+          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
+          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
+          vec(ij2site(-col, row))  =vec(ij2site(row,col))
+          vec(ij2site( col,-row))  =vec(ij2site(row,col))
+          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
+       enddo
+    enddo
+  end subroutine c_symmetrize
+
+
+
+  !******************************************************************
+  !******************************************************************
+  !******************************************************************
+
+
+
 
 end module RDMFT_VARS_GLOBAL

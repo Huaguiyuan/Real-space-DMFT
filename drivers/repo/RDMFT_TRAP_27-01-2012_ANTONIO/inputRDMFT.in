@@ -1,0 +1,7 @@
+&DISORDER
+ WDIS		= 0.0
+ NSIDE		= 15	
+ PBCFLAG	= F
+ V0TRAP=0.4
+ A0TRAP=0
+/

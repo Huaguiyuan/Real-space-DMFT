@@ -292,13 +292,10 @@ contains
   !******************************************************************
 
 
-
-
-
-
   subroutine search_mu(convergence)
     real(8)               :: naverage
     logical,intent(inout) :: convergence
+    integer               :: ndelta1,nindex1    
     if(mpiID==0)then
        naverage=get_naverage(id=0)
        nindex1=nindex
@@ -327,9 +324,9 @@ contains
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu
 
+  !******************************************************************
+  !******************************************************************
 
-  !******************************************************************
-  !******************************************************************
 
 
   function get_naverage(id) result(naverage)
@@ -352,6 +349,6 @@ contains
 
 
 
-end program
+end program hmmpt
 
 

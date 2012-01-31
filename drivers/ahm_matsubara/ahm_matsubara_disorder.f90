@@ -74,10 +74,11 @@ contains
        inquire(file="LSelf.ipt",exist=check2)
        check=check1*check2
        if(check)then
-          write(*,*)"Reading Sigma in input:"
+          call msg("Reading Self-energy from file:",lines=2)
           call sread("LSigma.ipt",sigma(1,1:Ns,1:L))
           call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
        else
+          call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif
@@ -125,9 +126,9 @@ contains
 
 
   subroutine solve_sc_impurity_mpi()
-    integer :: is,Nchunk,R
+    integer :: is,i
     logical :: disorder
-    disorder=.false. ; if(Wdis/=0)disorder=.true.
+    disorder=.false. ; if(Wdis/=0.d0)disorder=.true.
     call msg("Solve impurity:")
     disorder=.true.
     if(disorder)then

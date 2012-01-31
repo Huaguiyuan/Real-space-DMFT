@@ -1,0 +1,15 @@
+ &DISORDER
+ WDIS    =  0.000000000000000E+000,
+ V0TRAP  =  0.200000000000000     ,
+ A0TRAP  =  -1.78593750000000     ,
+ NSIDE   =          5,
+ IDUM    =     1234567,
+ PBCFLAG = T,
+ SYMMFLAG        = T,
+ N_WANTED        =          30,
+ N_TOL   =  0.100000000000000     ,
+ CHITRAP =  0.100000000000000     ,
+ GAMMATRAP       =   1.00000000000000     ,
+ DIM     =           2,
+ OMP_NUM_THREADS =           1
+ /
