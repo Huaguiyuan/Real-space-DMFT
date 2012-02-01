@@ -247,12 +247,12 @@ contains
     logical                  :: converged
     character(len=4)         :: loop
     real(8),dimension(2,0:L) :: fgt
-    real(8),allocatable                     :: grid_x(:),grid_y(:)
-    real(8),allocatable                     :: dij(:,:),nij(:,:),eij(:,:),cdwij(:,:)
+    real(8),allocatable      :: grid_x(:),grid_y(:)
+    real(8),allocatable      :: dij(:,:),nij(:,:),eij(:,:),cdwij(:,:)
 
     if(mpiID==0)then
 
-       occupied=0 
+       occupied=0
 
        do is=1,Ns
           cdw(is) = (nii(is)-1.d0)*((-1.d0)**abs(irow(is)+icol(is))) 
@@ -267,17 +267,15 @@ contains
        n_corner=nii(corner); n_border=nii(border); n_min=minval(nii)
        e_corner=a0trap+etrap(corner)
 
-       print*,"========================================"
+       print*
        print*,"Average density =",n_av
-       print*,"Delta_av =",delta_av
+       print*,"Delta_av        =",delta_av
        print*,"Minimum density =",n_min
-       print*,"Residual density at the border=",n_border 
+       print*,"Border density  =",n_border 
        if (n_border.gt.density_threshold) print*,"WARNING: MAYBE TOUCHING THE TRAP BOUNDARIES"
-       print*,"========================================"
        print*,"Residual density at the corner=",n_corner
-       print*,"Trap energy at the corner =",e_corner
+       print*,"Trap energy at the corner     =",e_corner
        if (n_corner.gt.n_min+density_threshold) print*,"ACHTUNG: NON-MONOTONIC DENSITY PROFILE"
-       print*,"========================================"       
 
        call splot(trim(adjustl(trim(name_dir)))//"/ntotVSiloop.ipt",iloop,n_tot,append=TT)
        call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta_av,append=TT)
@@ -288,34 +286,13 @@ contains
        !-------------------------------------------------------------------------------------------       
        !      to be removed.. after debugging store only compact forms of
        !      Self-energy and Green functions to save space 
-
-       do i=1,Ns
-          call splot("Gloc_iw_site.ipt",wm,fg(1,i,1:L),append=TT)
-          call splot("Floc_iw_site.ipt",wm,fg(2,i,1:L),append=TT)
-          call splot("Sigma_iw_site.ipt",wm,sigma(1,i,1:L),append=TT)
-          call splot("Self_iw_site.ipt",wm,sigma(2,i,1:L),append=TT)
-       enddo
-       !******************************************************************************
-
-       !   plotting selected green-function and self-energies for quick
-       !   data processing and debugging
-
-       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L),append=FF)
-       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L),append=FF)
-       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L),append=TT) ! controllo come evolvono le selfenergie con le iterazioni 
-       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L),append=TT)
-
-
-       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L),append=FF)
-       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L),append=FF)
-       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L),append=TT)
-       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L),append=TT)
-
-
-       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L),append=FF)
-       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L),append=FF)
-       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L),append=TT)
-       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L),append=TT)
+       ! do i=1,Ns
+       !    call splot("Gloc_iw_site.ipt",wm,fg(1,i,1:L),append=TT)
+       !    call splot("Floc_iw_site.ipt",wm,fg(2,i,1:L),append=TT)
+       !    call splot("Sigma_iw_site.ipt",wm,sigma(1,i,1:L),append=TT)
+       !    call splot("Self_iw_site.ipt",wm,sigma(2,i,1:L),append=TT)
+       ! enddo
+       ! !******************************************************************************
 
 
        !          STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
@@ -323,70 +300,51 @@ contains
        !          so that in case of chrashes we can automatiucally restart with 
        !          a meaningful self-energy (just unzip LSigma.ipt.gz)
        !
-       call splot("LSigma.ipt",sigma(1,1:Ns,1:L))
-       call splot("LSelf.ipt",sigma(2,1:Ns,1:L))
-       call splot("LG.ipt",fg(1,1:Ns,1:L))
-       call splot("LF.ipt",fg(2,1:Ns,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1,1:Ns,1:L),wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/LSelf.ipt",sigma(2,1:Ns,1:L),wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1,1:Ns,1:L),wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/LF.ipt",fg(2,1:Ns,1:L),wm)
+
+       !   plotting selected green-function and self-energies for quick
+       !   data processing and debugging
+       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_center.ipt",wm,fg(1,center,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_center.ipt",wm,fg(2,center,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_center.ipt",wm,sigma(1,center,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_center.ipt",wm,sigma(2,center,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_border.ipt",wm,fg(1,border,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_border.ipt",wm,fg(2,border,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_border.ipt",wm,sigma(1,border,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_border.ipt",wm,sigma(2,border,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_corner.ipt",wm,fg(1,corner,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_corner.ipt",wm,fg(2,corner,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L),append=printf)
+       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_corner.ipt",wm,sigma(2,corner,1:L),append=printf)
+
 
        !--------------------------------------------------------------------------------
-
        if(converged) then
-
-          print*,"**********************       SUMMARY        *************************"
-
+          call msg("*********** SUMMARY *************")
           n_center= nii(center); delta_center=dii(center); delta_max=maxval(dii)
-
-          print*,"trap_occupancy",dble(occupied)/dble(Ns)
-          print*,"Density-----------------"
-          print*,"center =",n_center
-          print*,"Total =",n_tot
-          print*,"average =",n_av
-          print*,"Delta-------------------"
-          print*,"center =",delta_center
-          print*,"average =",delta_av
-          print*,"max =",delta_max
-
-          print*,"**********************     END  SUMMARY        *************************"
-
-          !      redundant..
-
-          !          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.ipt",dii)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-
-
-          !       do i=1,Ns
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_site.ipt",wm,fg(1,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_site.ipt",wm,fg(2,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_site.ipt",wm,sigma(1,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_site.ipt",wm,sigma(2,i,1:L),append=TT)
-          !       enddo
-
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LSelf.ipt",sigma(2,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LF.ipt",fg(2,1:Ns,1:L))
-
-
-          ! afg(:,:)   =sum(fg(1:2,1:Ns,1:L),dim=2)/dble(Ns)
-          ! asig(:,:)  =sum(sigma(1:2,1:Ns,1:L),dim=2)/dble(Ns)
-          ! call splot(trim(adjustl(trim(name_dir)))//"/Gave_iw.ipt",wm,afg(1,1:L))
-          ! call splot(trim(adjustl(trim(name_dir)))//"/Sigmaave_iw.ipt",wm,asig(1,1:L))
-
+          write(*,"(A12,F18.12)")"trap_occupancy",dble(occupied)/dble(Ns)
+          write(*,"(A12)")"Density-----------------"
+          write(*,"(A12,F18.12)")"center =",n_center
+          write(*,"(A12,F18.12)")"Total =",n_tot
+          write(*,"(A12,F18.12)")"average =",n_av
+          write(*,"(A12)")"Delta-------------------"
+          write(*,"(A12,F18.12)")"center =",delta_center
+          write(*,"(A12,F18.12)")"average =",delta_av
+          write(*,"(A12,F18.12)")"max =",delta_max
 
           !BUILD A GRID FOR  LATTICE PLOTS:
-
           allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
           allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
           allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
           allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
           allocate(cdwij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-
           do row=-Nside/2,Nside/2
              grid_x(row)=dble(row)
              grid_y(row)=dble(row)
           enddo
-
           do row=-Nside/2,Nside/2
              do col=-Nside/2,Nside/2
                 i            = ij2site(row,col)
@@ -401,10 +359,7 @@ contains
           call splot("3d_etrapVSij.data",grid_x,grid_y,eij)
           call splot("3d_cdwVSij.data",grid_x,grid_y,cdwij)
           call system("mv -vf 3d_*.data plot_3d* "//trim(adjustl(trim(name_dir)))//"/ ")
-          call system("mv -vf *.ipt used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
-          call system("cp -vf *.ipt.gz "//trim(adjustl(trim(name_dir)))//"/ ")
-          call system("gunzip -v LSigma.ipt.gz LSelf.ipt.gz")
-          call system("rm -vf *ipt.gz")
+          call system("mv -vf used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
        endif
     end if
     return
@@ -452,29 +407,20 @@ contains
        endif
        if(nindex1+nindex==0)then       !avoid loop back and back
           ndelta=ndelta1/2.d0
-          !deltan=deltan/2.d0         !by decreasing the step         
        endif
        a0trap=a0trap-chitrap*real(nindex,8)*ndelta  ! a0trap=-mu_tot
-
        !         in this way chitrap is the inverse trap compressibility chitrap=dmu/d(N_tot)
-
-       print*,"=======================  DENSITY-LOOP   ========================="
-       write(*,"(A,f15.12,A,f15.12)")"A0TRAP=",a0trap," step =",ndelta
-       write(*,"(A,f15.12,A,f15.12)")"density error=",abs(n_tot-n_wanted)," vs",n_tol
+       call msg("---Density loop---")
+       write(*,"(A,f15.12,1x,A,f15.12)")"a0trap       =",a0trap," step =",ndelta
+       write(*,"(A,f15.12,1x,A,f15.12)")"density error=",abs(n_tot-n_wanted),"/",n_tol
        if(abs(n_tot-n_wanted) > n_tol) then
-          print*,"********* density loop not yet converged ***********" 
           if (iloop < nloop) then
              convergence=.false.
           else
-             print*,"       FORCED DENSITY LOOP EXIT !!        "
-             print*,"CONSIDER INCREASING NLOOP OR CHANGE CHITRAP"
+             call abort("FORCED DENSITY LOOP EXIT!! not yet converged: increase +nloop or change +chitrap",stop=.false.)
              convergence=.true.
           endif
-       else
-          print*,"*********     density-loop CONVERGED      ***********"
        endif
-       print*,"================================================================="
-
        call splot(trim(adjustl(trim(name_dir)))//"/a0trapVSiter.ipt",iloop,a0trap,abs(n_tot-n_wanted),append=.true.)
     endif
     call MPI_BCAST(a0trap,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)

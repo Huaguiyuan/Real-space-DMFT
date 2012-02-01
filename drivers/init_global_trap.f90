@@ -62,18 +62,15 @@
   if (N_wanted==0) then 
      densfixed=.false.
      if (mpiID==0) then
-        write(*,*)"======================================================" 
         write(*,*)"Working at fixed (global) chemical potential"
-        write(*,*)""
      endif
   else
      densfixed=.true.
-     !deltan=1.0d0                    ! to be read from input ?
      if (mpiID==0) then 
-        write(*,"(A,I)")"Working at fixed total particle number",N_wanted
-        write(*,"(A,I)")"Required tolerance over the number of particles",N_tol
-        write(*,"(A,F12.9)")"Starting value for the trap compressibility",chitrap
-        write(*,"(A,F12.9)")"Initial step in mu",ndelta!deltan
+        write(*,"(A,I6)")"Working at fixed total particle number         =",N_wanted
+        write(*,"(A,F12.9)")"Required tolerance over the number of particles=",N_tol
+        write(*,"(A,F12.9)")"Starting value for the trap compressibility    =",chitrap
+        write(*,"(A,F12.9)")"Initial step in mu                             =",ndelta
      endif
   endif
 
