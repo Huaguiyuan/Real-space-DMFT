@@ -13,9 +13,11 @@ program ahm_matsubara_disorder
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
   complex(8),allocatable,dimension(:,:)   :: fg0
+  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
   logical                                 :: converged
   real(8)                                 :: r
   integer                                 :: i,is
+
 
   !GLOBAL INITIALIZATION:
   !===============================================================
@@ -32,8 +34,9 @@ program ahm_matsubara_disorder
   allocate(fg(2,Ns,L))
   allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
+  !
   allocate(sigma_tmp(2,Ns,L))
-
+  allocate(nii_tmp(Ns),dii_tmp(Ns))
 
 
   !START DMFT LOOP SEQUENCE:
@@ -134,6 +137,8 @@ contains
     if(disorder)then
        call start_timer
        sigma_tmp=zero
+       nii_tmp  =zero
+       dii_tmp  =zero
        do is=1+mpiID,Ns,mpiSIZE
           call solve_per_site(is)
           call eta(is,Ns,998)
@@ -141,6 +146,12 @@ contains
        call stop_timer
        call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
        call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+       !
+       call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
+       !
+       call MPI_REDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_BCAST(dii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
     else
        call solve_per_site(is=1)
        forall(is=1:Ns)sigma(:,is,:)=sigma_tmp(:,1,:)
@@ -166,6 +177,9 @@ contains
     call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
     call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
     n    = -real(fgt(1,L),8) ; delta= -u*fgt(2,0)
+    !
+    nii_tmp(is)=2.d0*n; dii_tmp(is)=delta
+    !
     fg0=zero ; calG=zero
     det       = abs(fg(1,is,:))**2    + fg(2,is,:)**2
     fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) - U*(n-0.5d0)
@@ -177,8 +191,10 @@ contains
     call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
     n0=-real(fg0t(1,L)) ; delta0= -u*fg0t(2,0)
     write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
+    !
     sigma_tmp(:,is,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
     sigma_tmp(:,is,:) =  weigth*sigma_tmp(:,is,:) + (1.d0-weigth)*sold(:,is,:)
+    !
   end subroutine solve_per_site
 
 
@@ -191,7 +207,7 @@ contains
   subroutine print_sc_out(converged)
     integer                   :: i,j,is,row,col
     real(8)                   :: nimp,delta
-    real(8),dimension(Ns)     :: nii,dii,cdwii,rii,sii,zii
+    real(8),dimension(Ns)     :: cdwii,rii,sii,zii
     real(8)                   :: mean,sdev,var,skew,kurt
     real(8),dimension(2,Ns)   :: data_covariance
     real(8),dimension(2,2)    :: covariance_nd
@@ -201,13 +217,13 @@ contains
     complex(8),dimension(2,L) :: afg,asigma
 
     if(mpiID==0)then
-       nimp=0.d0 ; delta=0.d0
-       do is=1,Ns
-          call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
-          call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
-          nii(is) = -2.d0*real(fgt(1,L))
-          dii(is) = -u*fgt(2,0)
-       enddo
+       ! nimp=0.d0 ; delta=0.d0
+       ! do is=1,Ns
+       !    call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
+       !    call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
+       !    nii(is) = -2.d0*real(fgt(1,L))
+       !    dii(is) = -u*fgt(2,0)
+       ! enddo
        nimp = sum(nii)/dble(Ns)
        delta= sum(dii)/dble(Ns)
        print*,"nimp  =",nimp
@@ -302,10 +318,12 @@ contains
 
 
   subroutine search_mu(convergence)
-    real(8)               :: naverage
+    integer, save         ::nindex
+    integer               ::nindex1
+    real(8)               :: naverage,ndelta1
     logical,intent(inout) :: convergence
     if(mpiID==0)then
-       naverage=get_naverage(id=0)
+       naverage=sum(nii)/dble(Ns)
        nindex1=nindex
        ndelta1=ndelta
        if((naverage >= nread+nerror))then
@@ -333,25 +351,6 @@ contains
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu
 
-
-  !******************************************************************
-  !******************************************************************
-
-
-  function get_naverage(id) result(naverage)
-    integer :: is,id
-    real(8) :: naverage
-    real(8) :: nii(Ns)
-    real(8),dimension(2,0:L) :: fgt
-    if(mpiID==id)then
-       naverage=0.d0
-       do is=1,Ns
-          call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
-          nii(is) = -2.d0*real(fgt(1,L))
-       enddo
-       naverage = sum(nii)/dble(Ns)
-    endif
-  end function get_naverage
 
   !******************************************************************
   !******************************************************************

@@ -16,7 +16,8 @@
   allocate(H0(Ns,Ns))
   allocate(icol(Ns),irow(Ns))
   allocate(ij2site(Nside,Nside))
-
+  allocate(nii(Ns))
+  allocate(dii(Ns))
 
   !CREATE DATA_DIR FOR AND STORE THIS IDUM 
   !=====================================================================

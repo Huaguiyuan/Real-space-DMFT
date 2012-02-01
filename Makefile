@@ -1,4 +1,4 @@
-EXE	=ahm_matsubara_trap
+EXE	=ahm_matsubara_disorder
 DIR	=drivers/ahm_matsubara
 DIREXE	=$(HOME)/.bin
 FC	=mpif90

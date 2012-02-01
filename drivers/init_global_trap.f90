@@ -7,6 +7,17 @@
   call read_input("inputIPT.in")
   call rdmft_read_input("inputRDMFT.in")
 
+  !CHECK ODD NSIDE FOR TRAP:
+  !=====================================================================
+  if(mod(Nside,2)==0)then
+     Nside=Nside-1
+     if(mpiID==0)then 
+        write(*,"(A)")bg_red("Nside has to be odd!")
+        write(*,"(A,I,A)")bg_red("Using Nside="),Nside,bg_red(" instead")
+     endif
+  endif
+
+
   !ALLOCATE WORKING ARRAYS:
   !=====================================================================
   Ns    =Nside**2
@@ -57,12 +68,12 @@
      endif
   else
      densfixed=.true.
-     deltan=1.0d0                    ! to be read from input ?
+     !deltan=1.0d0                    ! to be read from input ?
      if (mpiID==0) then 
         write(*,"(A,I)")"Working at fixed total particle number",N_wanted
         write(*,"(A,I)")"Required tolerance over the number of particles",N_tol
         write(*,"(A,F12.9)")"Starting value for the trap compressibility",chitrap
-        write(*,"(A,F12.9)")"Initial step in mu",deltan
+        write(*,"(A,F12.9)")"Initial step in mu",ndelta!deltan
      endif
   endif
 

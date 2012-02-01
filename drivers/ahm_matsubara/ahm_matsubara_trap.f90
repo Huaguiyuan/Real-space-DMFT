@@ -7,7 +7,7 @@
 program ahm_matsubara_trap
   USE RDMFT_VARS_GLOBAL
   implicit none
-  real(8)                                 :: r,delta,delta0,deltan
+  real(8)                                 :: r
   real(8)                                 :: n_tot,delta_tot
   integer                                 :: is,esp,lm
   logical                                 :: converged
@@ -101,8 +101,7 @@ contains
           call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
-          delta=deltasc
-          sigma(1,:,:)=zero ; sigma(2,:,:)=-delta
+          sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif
     call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
@@ -436,10 +435,12 @@ contains
   subroutine search_mu(convergence)
     integer, save         ::nindex
     integer               ::nindex1
-    real(8),save          ::muold,N_old  
+    real(8),save          ::muold,N_old
+    real(8)               :: ndelta1
     logical,intent(inout) ::convergence
     if(mpiID==0)then
        nindex1=nindex  !! save old value of the increment sign
+       ndelta1=ndelta
        !      muold=a0trap    !! implement to extrapulate a sound value of chitrap
        !      N_old=N_old     !! from the same procedure to fix the density
        if((n_tot >= n_wanted+n_tol))then
@@ -450,14 +451,15 @@ contains
           nindex=0
        endif
        if(nindex1+nindex==0)then       !avoid loop back and back
-          deltan=deltan/2.d0         !by decreasing the step
+          ndelta=ndelta1/2.d0
+          !deltan=deltan/2.d0         !by decreasing the step         
        endif
-       a0trap=a0trap-chitrap*real(nindex,8)*deltan  ! a0trap=-mu_tot
+       a0trap=a0trap-chitrap*real(nindex,8)*ndelta  ! a0trap=-mu_tot
 
        !         in this way chitrap is the inverse trap compressibility chitrap=dmu/d(N_tot)
 
        print*,"=======================  DENSITY-LOOP   ========================="
-       write(*,"(A,f15.12,A,f15.12)")"A0TRAP=",a0trap," step =",deltan
+       write(*,"(A,f15.12,A,f15.12)")"A0TRAP=",a0trap," step =",ndelta
        write(*,"(A,f15.12,A,f15.12)")"density error=",abs(n_tot-n_wanted)," vs",n_tol
        if(abs(n_tot-n_wanted) > n_tol) then
           print*,"********* density loop not yet converged ***********" 

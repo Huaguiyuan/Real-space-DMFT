@@ -24,8 +24,7 @@ module RDMFT_VARS_GLOBAL
 
   !Lattice size:
   !=========================================================
-  integer,protected :: Nside
-  integer           :: Ns,Nindip
+  integer   :: Nside,Ns,Nindip
 
   !Frequency and time arrays:
   !=========================================================
@@ -204,13 +203,7 @@ contains
     endif
 
 
-    if(mod(Nside,2)==0)then
-       Nside=Nside-1
-       if(mpiID==0)then 
-          write(*,"(A)")bg_red("Nside has to be odd!")
-          write(*,"(A,I,A)")bg_red("Using Nside="),Nside,bg_red(" instead")
-       endif
-    endif
+
 
     call version(revision)
   end subroutine rdmft_read_input
