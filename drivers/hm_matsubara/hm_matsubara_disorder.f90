@@ -34,14 +34,15 @@ function funcv(x)
   write(101+mpiID,"(3(f13.9))")n,n0,xmu0
 end function funcv
 
-program hmmpt_matsubara
+program hmmpt_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
   USE COMMON_BROYDN
   implicit none
-  integer    :: i,is
-  real(8)    :: x(1),r
-  logical    :: check,converged  
+  integer                               :: i,is
+  real(8)                               :: x(1),r
+  logical                               :: check,converged  
   complex(8),allocatable,dimension(:,:) :: sigma_tmp
+  real(8),allocatable,dimension(:)      :: nii_tmp,dii_tmp
 
   !GLOBAL INITIALIZATION:
   !=====================================================================
@@ -50,13 +51,17 @@ program hmmpt_matsubara
 
   !ALLOCATE WORKING ARRAYS:
   !=====================================================================
+
+  allocate(fg(Ns,L),sigma(Ns,L))
+  allocate(fg0(L),gamma(L))
+  allocate(fgt(Ns,0:L),fg0t(0:L))
+  !
+  allocate(sigma_tmp(Ns,L))
+  allocate(nii_tmp(Ns),dii_tmp(Ns))
+  !
   allocate(wm(L),tau(0:L))
   wm(:)  = pi/beta*real(2*arange(1,L)-1,8)
   tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
-  allocate(fg(Ns,L),sigma(Ns,L),sigma_tmp(Ns,L))
-  allocate(fg0(L),gamma(L))
-  allocate(fgt(Ns,0:L),fg0t(0:L))
-
 
 
   !START DMFT LOOP SEQUENCE:
@@ -74,7 +79,7 @@ program hmmpt_matsubara
      call solve_impurity_mpi()
 
      converged=check_convergence(sigma,eps_error,Nsuccess,nloop,id=0)
-     !if(nread/=0.d0)call search_mu(converged)
+     if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_out(converged)
      call end_loop()
@@ -93,16 +98,18 @@ contains
   !+-------------------------------------------------------------------+
   subroutine setup_initial_sigma()
     logical :: check
-    inquire(file="LSigma.ipt",exist=check)
-    if(check)then
-       if(mpiID==0)then
-          call msg("Reading Sigma in input")
-          call sread("LSigma.ipt",sigma(1:Ns,1:L))
+    if(mpiID==0)then
+       inquire(file="LSigma_iw.restart",exist=check)
+       if(.not.check)inquire(file="LSigma_iw.restart.gz",exist=check)
+       if(check)then
+          call msg(bg_yellow("Reading Self-energy from file:"),lines=2)
+          call sread("LSigma_iw.restart",sigma(1:Ns,1:L),wm(1:L))
        endif
-       call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
     else
-       n=0.5d0 ; sigma=u*(n-0.5d0)
+       call msg(bg_yellow("Using Hartree-Fock self-energy"),lines=2)
+       sigma=zero!u*(n-0.5d0)
     endif
+    call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
   end subroutine setup_initial_sigma
 
 
@@ -160,6 +167,7 @@ contains
     if(disorder)then
        call start_timer
        sigma_tmp=zero
+       nii_tmp  =zero
        do is=1+mpiID,Ns,mpiSIZE
           call solve_per_site(is)
           call eta(is,Ns,998)
@@ -167,6 +175,9 @@ contains
        call stop_timer
        call MPI_REDUCE(sigma_tmp,sigma,Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
        call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+       !
+       call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
     else
        call solve_per_site(is=1)
        forall(is=1:Ns)sigma(is,:)=sigma_tmp(1,:)
@@ -194,13 +205,18 @@ contains
     sold(is,:)=sigma(is,:)
     call fftgf_iw2tau(fg(is,:),fgt(is,:),beta)
     n=-real(fgt(is,L))
+    !
+    nii_tmp(is)=2.d0*n
+    !
     gamma = one/(one/fg(is,:) + sigma(is,:))
     xmu0=0.d0 ; x(1)=xmu
     call broydn(x,check)
     xmu0=x(1)
     !Evaluate self-energy and put it into Sigma_tmp to be mpi_reduced later on
+    !
     sigma_tmp(is,:) = solve_mpt_matsubara(fg0,n,n0,xmu0)
     sigma_tmp(is,:) = weigth*sigma_tmp(is,:) + (1.d0-weigth)*sold(is,:)
+    !
   end subroutine solve_per_site
 
 
@@ -214,37 +230,82 @@ contains
   !PURPOSE  : Print out results
   !+-------------------------------------------------------------------+
   subroutine print_out(converged)
-    real(8)   :: nimp,nii(Ns)
-    complex(8):: afg(1:L),asig(1:L)
-    logical   :: converged
-    integer   :: i,is
+    integer                 :: i,j,is,M,row,col
+    real(8)                 :: nimp
+    real(8),dimension(Ns)   :: cdwii,rii,sii,zii
+    real(8)                 :: mean,sdev,var,skew,kurt
+    real(8),dimension(2,Ns) :: data_covariance
+    real(8),dimension(2)    :: data_mean,data_sdev
+    real(8),dimension(2,2)  :: covariance_nd
+    logical                 :: converged
+    complex(8)              :: afg(1:L),asig(1:L)
 
-    character(len=4) :: loop
     if(mpiID==0)then
-       nimp=0.d0
-       do is=1,Ns
-          call fftgf_iw2tau(fg(is,1:L),fgt(is,0:L),beta)
-          nii(is) =-2.d0*real(fgt(is,L))
-       enddo
        nimp=sum(nii)/real(Ns,8)
        print*,"nimp  =",nimp
        call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
-
-       write(loop,"(I4)")iloop
-       do i=1,Ns
-          call splot("Gloc_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,fg(i,1:L),append=TT)
-          call splot("Sigma_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,sigma(i,1:L),append=TT)
-       enddo
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.ipt",sigma,wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.ipt",fg,wm)
 
        if(converged)then
-          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-          call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma)
-          call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg)
+          !Plot averaged local functions
           afg(:)  = sum(fg(1:Ns,1:L),dim=1)/dble(Ns) 
           asig(:) = sum(sigma(1:Ns,1:L),dim=1)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/Gav_iw.ipt",wm,afg)
-          call splot(trim(adjustl(trim(name_dir)))//"/Sigmaav_iw.ipt",wm,asig)
+          call splot(trim(adjustl(trim(name_dir)))//"/aG_iw.ipt",wm,afg)
+          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_iw.ipt",wm,asig)
+
+          !Plot observables: n,n_cdw,rho,sigma,zeta
+          do is=1,Ns
+             row=irow(is) 
+             col=icol(is)
+             cdwii(is) = (-1.d0)**(row+col)*nii(is)
+             sii(is)   = dimag(sigma(is,1))-&
+                  wm(1)*(dimag(sigma(is,2))-dimag(sigma(is,1)))/(wm(2)-wm(1))
+             rii(is)   = dimag(fg(is,1))-&
+                  wm(1)*(dimag(fg(is,2))-dimag(fg(is,1)))/(wm(2)-wm(1))
+             zii(is)   = 1.d0/( 1.d0 + abs( dimag(sigma(is,1))/wm(1) ))
+          enddo
+          rii=abs(rii)
+          sii=abs(sii)
+          zii=abs(zii)
+          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.data",nii)
+          call splot(trim(adjustl(trim(name_dir)))//"/cdwVSisite.data",cdwii)
+          call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
+          call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
+          call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
+          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
+
+
+          call get_moments(nii,mean,sdev,var,skew,kurt)
+          data_mean(1)=mean ; data_sdev(1)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.n.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(zii,mean,sdev,var,skew,kurt)
+          data_mean(2)=mean ; data_sdev(2)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.z.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(sii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.sigma.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(rii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.rho.data",mean,sdev,var,skew,kurt)
+
+          data_covariance(1,:)=nii
+          data_covariance(2,:)=zii
+          covariance_nd = get_covariance(data_covariance,data_mean)
+          open(10,file=trim(adjustl(trim(name_dir)))//"/covariance_n.z.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+
+          forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
+          open(10,file=trim(adjustl(trim(name_dir)))//"/correlation_n.z.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+
        endif
     endif
     return
@@ -263,8 +324,10 @@ contains
   subroutine search_mu(convergence)
     real(8)               :: naverage
     logical,intent(inout) :: convergence
+    real(8)               :: ndelta1
+    integer               :: nindex1    
     if(mpiID==0)then
-       naverage=get_naverage(id=0)
+       naverage=sum(nii(:))/real(Ns,8)
        nindex1=nindex
        ndelta1=ndelta
        if((naverage >= nread+nerror))then
@@ -276,11 +339,10 @@ contains
        endif
        if(nindex1+nindex==0)then !avoid loop forth and back
           ndelta=ndelta1/2.d0 !decreasing the step
-          xmu=xmu+real(nindex,8)*ndelta
        else
           ndelta=ndelta1
-          xmu=xmu+real(nindex,8)*ndelta
        endif
+       xmu=xmu+real(nindex,8)*ndelta
        write(*,"(A,f15.12,A,f15.12,A,f15.12,A,f15.12)")" n=",naverage," /",nread,&
             "| shift=",nindex*ndelta,"| xmu=",xmu
        write(*,"(A,f15.12)")"dn=",abs(naverage-nread)
@@ -296,27 +358,7 @@ contains
   !******************************************************************
 
 
-  function get_naverage(id) result(naverage)
-    integer :: is,id
-    real(8) :: naverage
-    real(8) :: nii(Ns)
-    if(mpiID==id)then
-       naverage=0.d0
-       do is=1,Ns
-          call fftgf_iw2tau(fg(is,1:L),fgt(is,0:L),beta)
-          nii(is) =-2.d0*real(fgt(is,L))
-       enddo
-       naverage = sum(nii(:))/real(Ns,8)
-    endif
-  end function get_naverage
 
-
-
-  !******************************************************************
-  !******************************************************************
-
-
-
-end program hmmpt_matsubara
+end program
 
 
