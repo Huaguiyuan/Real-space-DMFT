@@ -78,8 +78,8 @@ contains
        check=check1*check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma.ipt",sigma(1,1:Ns,1:L))
-          call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
+          call sread("LSigma.ipt",sigma(1,1:Ns,1:L),wm)
+          call sread("LSelf.ipt",sigma(2,1:Ns,1:L),wm)
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -184,9 +184,9 @@ contains
     det       = abs(fg(1,is,:))**2    + fg(2,is,:)**2
     fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) - U*(n-0.5d0)
     fg0(2,:)  = fg(2,is,:)/det        + sigma(2,is,:) + delta
-    det       =  abs(fg0(1,:))**2 + fg0(2,:)**2
-    calG(1,:) =  conjg(fg0(1,:))/det
-    calG(2,:) =  fg0(2,:)/det
+    det       = abs(fg0(1,:))**2      + fg0(2,:)**2
+    calG(1,:) = conjg(fg0(1,:))/det
+    calG(2,:) = fg0(2,:)/det
     call fftgf_iw2tau(calG(1,:),fg0t(1,:),beta)
     call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
     n0=-real(fg0t(1,L)) ; delta0= -u*fg0t(2,0)
@@ -217,13 +217,6 @@ contains
     complex(8),dimension(2,L) :: afg,asigma
 
     if(mpiID==0)then
-       ! nimp=0.d0 ; delta=0.d0
-       ! do is=1,Ns
-       !    call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
-       !    call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
-       !    nii(is) = -2.d0*real(fgt(1,L))
-       !    dii(is) = -u*fgt(2,0)
-       ! enddo
        nimp = sum(nii)/dble(Ns)
        delta= sum(dii)/dble(Ns)
        print*,"nimp  =",nimp

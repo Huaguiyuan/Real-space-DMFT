@@ -1,5 +1,10 @@
+<<<<<<< HEAD
 EXE	=ahm_matsubara_trap
 DIR	=drivers/ahm_matsubara
+=======
+EXE	=hm_matsubara_disorder
+DIR	=drivers/hm_matsubara
+>>>>>>> devel
 DIREXE	=$(HOME)/.bin
 FC	=mpif90
 

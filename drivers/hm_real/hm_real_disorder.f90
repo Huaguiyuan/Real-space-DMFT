@@ -35,14 +35,16 @@ end function funcv
 
 
 
-program hmmpt
+program hmmpt_real_disorder
   USE RDMFT_VARS_GLOBAL
   USE COMMON_BROYDN
   implicit none
-  integer    :: i,is
-  real(8)    :: x(1),r
-  logical    :: check,converged  
+  integer                               :: i,is
+  real(8)                               :: x(1),r
+  logical                               :: check,converged  
   complex(8),allocatable,dimension(:,:) :: sigma_tmp
+  real(8),allocatable,dimension(:)      :: nii_tmp,dii_tmp
+
 
   !GLOBAL INITIALIZATION:
   !=====================================================================
@@ -51,9 +53,13 @@ program hmmpt
 
   !ALLOCATE WORKING ARRAYS:
   !=====================================================================
-  allocate(wr(L))
-  allocate(fg(Ns,L),sigma(Ns,L),sigma_tmp(Ns,L))
+  allocate(fg(Ns,L),sigma(Ns,L))
   allocate(fg0(L),gamma(L))
+  !
+  allocate(sigma_tmp(Ns,L))
+  allocate(nii_tmp(Ns),dii_tmp(Ns))
+  !
+  allocate(wr(L))
   wr=linspace(-wmax,wmax,L,mesh=fmesh)
 
 
@@ -92,16 +98,18 @@ contains
   !+-------------------------------------------------------------------+
   subroutine setup_initial_sigma()
     logical :: check
-    inquire(file="LSigma.ipt",exist=check)
-    if(check)then
-       if(mpiID==0)then
-          call msg("Reading Sigma in input")
-          call sread("LSigma.ipt",sigma(1:Ns,1:L))
+    if(mpiID==0)then
+       inquire(file="LSigma_realw.restart",exist=check)
+       if(.not.check)inquire(file="LSigma_realw.restart.gz",exist=check)
+       if(check)then
+          call msg(bg_yellow("Reading Self-energy from file:"),lines=2)
+          call sread("LSigma_realw.restart",sigma(1:Ns,1:L),wr(1:L))
        endif
-       call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
     else
-       n=0.5d0 ; sigma=u*(n-0.5d0)
+       call msg(bg_yellow("Using Hartree-Fock self-energy"),lines=2)
+       sigma=zero!\==u*(n-0.5d0)
     endif
+    call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
   end subroutine setup_initial_sigma
 
 
@@ -159,6 +167,7 @@ contains
     if(disorder)then
        call start_timer
        sigma_tmp=zero
+       nii_tmp  =zero
        do is=1+mpiID,Ns,mpiSIZE
           call solve_per_site(is)
           call eta(is,Ns,998)
@@ -166,6 +175,9 @@ contains
        call stop_timer
        call MPI_REDUCE(sigma_tmp,sigma,Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
        call MPI_BCAST(sigma,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+       !
+       call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
     else
        call solve_per_site(is=1)
        forall(is=1:Ns)sigma(is,:)=sigma_tmp(1,:)
@@ -192,13 +204,18 @@ contains
     if(.not.allocated(sold))allocate(sold(Ns,1:L))
     sold(is,:)=sigma(is,:)
     n=sum(fermi(wr,beta)*aimag(fg(is,:)))/sum(aimag(fg(is,:)))
+    !
+    nii_tmp(is)=2.d0*n
+    !
     gamma = one/(one/fg(is,:) + sigma(is,:))
     x(1)=xmu
     call broydn(x,check)
     xmu0=x(1)
     !Evaluate self-energy and put it into Sigma_tmp to be mpi_reduced later on
+    !
     sigma_tmp(is,:) = solve_mpt_sopt(fg0(:),wr(:),n,n0,xmu0)
     sigma_tmp(is,:) =weigth*sigma_tmp(is,:) + (1.d0-weigth)*sold(is,:)
+    !
   end subroutine solve_per_site
 
   subroutine solve_per_site_debug(is)
@@ -242,47 +259,117 @@ contains
   !PURPOSE  : Print out results
   !+-------------------------------------------------------------------+
   subroutine print_out(converged)
-    real(8)   :: nimp,nii(Ns)
-    integer,parameter :: M=8192
-    complex(8):: afg(1:L),asig(1:L),fgm(M)
-    real(8)   :: wm(M)
-    logical   :: converged
-    integer   :: i,is
+    integer                               :: i,j,is,M,row,col
+    real(8)                               :: nimp
+    real(8),dimension(Ns)                 :: cdwii,rii,sii,zii
+    real(8)                               :: mean,sdev,var,skew,kurt
+    real(8),dimension(2,Ns)               :: data_covariance
+    real(8),dimension(2)                  :: data_mean,data_sdev
+    real(8),dimension(2,2)                :: covariance_nd
+    logical                               :: converged
+    real(8),allocatable,dimension(:)      :: wm
+    complex(8),allocatable,dimension(:,:) :: fgm,sigm,fgm_tmp,sigm_tmp
+    complex(8)                            :: afg(1:L),asig(1:L)
 
-    character(len=4) :: loop
     if(mpiID==0)then
-       nimp=0.d0
-       do is=1,Ns
-          nii(is) = 2.d0*sum(fermi(wr,beta)*dimag(fg(is,1:L)))/sum(dimag(fg(is,1:L)))
-       enddo
        nimp=sum(nii(:))/dble(Ns)
        print*,"nimp  =",nimp
        call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_realw.data",sigma(1:Ns,1:L),wr(1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"/LG_realw.data",fg(1:Ns,1:L),wr(1:L))
+    endif
 
-       !TO BE REMOVED
-       write(loop,"(I4)")iloop
-       do i=1,Ns
-          call splot("Gloc_site."//trim(adjustl(trim(loop)))//".ipt",wr,fg(i,:),append=TT)
-          call splot("Sigma_site."//trim(adjustl(trim(loop)))//".ipt",wr,sigma(i,:),append=TT)
-       enddo
-
-       if(converged)then
-          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-          call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1:Ns,:))
-          call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1:Ns,:))
+    if(converged)then
+       !Plot averaged local functions
+       if(mpiID==0)then
           afg(:)  = sum(fg(1:Ns,1:L),dim=1)/dble(Ns)
           asig(:) = sum(sigma(1:Ns,1:L),dim=1)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/DOSav.ipt",wr,-dimag(afg(:))/pi)
-          call splot(trim(adjustl(trim(name_dir)))//"/Sigmaav_iw.ipt",wr,asig)
-          ! wm(:)  = pi/beta*real(2*arange(1,M)-1,8)
-          ! do is=1,Ns
-          !    fgm=zero
-          !    call get_matsubara_gf_from_dos(wr,fg(is,:),fgm(:),beta)
-          !    call splot("Gloc_iw_site."//trim(adjustl(trim(loop)))//".ipt",wm,fgm,append=TT)
-          ! enddo
+          call splot(trim(adjustl(trim(name_dir)))//"/aDOS.ipt",wr,-dimag(afg(:))/pi)
+          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_realw.ipt",wr,asig)
+       endif
+
+
+       !Get Matsubara GF at every sites, we used to get Z
+       M = max(8192,8*L) ; allocate(wm(M))
+       wm(:) = pi/beta*real(2*arange(1,M)-1,8)
+       allocate(fgm(Ns,L),sigm(Ns,L))
+       allocate(fgm_tmp(Ns,M),sigm_tmp(Ns,M))
+       fgm_tmp =zero
+       sigm_tmp=zero
+       do is=1+mpiID,Ns,mpiSIZE
+          call get_matsubara_gf_from_dos(wr,fg(is,1:L),fgm_tmp(is,1:M),beta)
+          call get_matsubara_gf_from_dos(wr,sigma(is,1:L),sigm_tmp(is,1:M),beta)
+       enddo
+       deallocate(fg,sigma)
+       call MPI_REDUCE(fgm_tmp(:,1:L),fgm,Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_REDUCE(sigm_tmp(:,1:L),sigm,Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+       call MPI_BCAST(fgm,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+       call MPI_BCAST(sigm,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+       !
+       deallocate(fgm_tmp,sigm_tmp)
+       !
+       if(mpiID==0)then
+          call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fgm,wm)
+          call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigm,wm)
+       endif
+
+
+       !Plot observables: n,n_cdw,rho,sigma,zeta
+       if(mpiID==0)then
+          do is=1,Ns
+             row=irow(is) 
+             col=icol(is)
+             cdwii(is) = (-1.d0)**(row+col)*nii(is)
+             sii(is)   = dimag(sigm(is,1))-&
+                  wm(1)*(dimag(sigm(is,2))-dimag(sigm(is,1)))/(wm(2)-wm(1))
+             rii(is)   = dimag(fgm(is,1))-&
+                  wm(1)*(dimag(fgm(is,2))-dimag(fgm(is,1)))/(wm(2)-wm(1))
+             zii(is)   = 1.d0/( 1.d0 + abs( dimag(sigm(is,1))/wm(1) ))
+          enddo
+          rii=abs(rii)
+          sii=abs(sii)
+          zii=abs(zii)
+          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.data",nii)
+          call splot(trim(adjustl(trim(name_dir)))//"/cdwVSisite.data",cdwii)
+          call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
+          call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
+          call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
+          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
+
+
+          call get_moments(nii,mean,sdev,var,skew,kurt)
+          data_mean(1)=mean ; data_sdev(1)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.n.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(zii,mean,sdev,var,skew,kurt)
+          data_mean(2)=mean ; data_sdev(2)=sdev
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.z.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(sii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.sigma.data",mean,sdev,var,skew,kurt)
+          !
+          call get_moments(rii,mean,sdev,var,skew,kurt)
+          call splot(trim(adjustl(trim(name_dir)))//"/statistics.rho.data",mean,sdev,var,skew,kurt)
+
+          data_covariance(1,:)=nii
+          data_covariance(2,:)=zii
+          covariance_nd = get_covariance(data_covariance,data_mean)
+          open(10,file=trim(adjustl(trim(name_dir)))//"/covariance_n.z.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+
+          forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
+          open(10,file=trim(adjustl(trim(name_dir)))//"/correlation_n.z.data")
+          do i=1,2
+             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
+          enddo
+          close(10)
+
        endif
     endif
+
     return
   end subroutine print_out
 
@@ -295,9 +382,10 @@ contains
   subroutine search_mu(convergence)
     real(8)               :: naverage
     logical,intent(inout) :: convergence
-    integer               :: ndelta1,nindex1    
+    real(8)               :: ndelta1
+    integer               :: nindex1    
     if(mpiID==0)then
-       naverage=get_naverage(id=0)
+       naverage=sum(nii(:))/real(Ns,8)
        nindex1=nindex
        ndelta1=ndelta
        if((naverage >= nread+nerror))then
@@ -309,11 +397,10 @@ contains
        endif
        if(nindex1+nindex==0)then !avoid loop forth and back
           ndelta=ndelta1/2.d0 !decreasing the step
-          xmu=xmu+real(nindex,8)*ndelta
        else
           ndelta=ndelta1
-          xmu=xmu+real(nindex,8)*ndelta
        endif
+       xmu=xmu+real(nindex,8)*ndelta
        write(*,"(A,f15.12,A,f15.12,A,f15.12,A,f15.12)")" n=",naverage," /",nread,&
             "| shift=",nindex*ndelta,"| xmu=",xmu
        write(*,"(A,f15.12)")"dn=",abs(naverage-nread)
@@ -329,26 +416,6 @@ contains
 
 
 
-  function get_naverage(id) result(naverage)
-    integer :: is,id
-    real(8) :: naverage
-    real(8) :: nii(Ns)
-    if(mpiID==id)then
-       naverage=0.d0
-       do is=1,Ns
-          nii(is) = 2.d0*sum(fermi(wr,beta)*dimag(fg(is,:)))/sum(dimag(fg(is,:)))
-       enddo
-       naverage = sum(nii(:))/real(Ns,8)
-    endif
-  end function get_naverage
-
-
-
-  !******************************************************************
-  !******************************************************************
-
-
-
-end program hmmpt
+end program hmmpt_real_disorder
 
 
