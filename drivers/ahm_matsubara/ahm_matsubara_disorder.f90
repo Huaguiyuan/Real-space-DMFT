@@ -12,7 +12,7 @@ program ahm_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  complex(8),allocatable,dimension(:,:)   :: fg0
+  complex(8),allocatable,dimension(:,:)   :: fg0,sconvergence
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
   logical                                 :: converged
   real(8)                                 :: r
@@ -37,7 +37,7 @@ program ahm_matsubara_disorder
   !
   allocate(sigma_tmp(2,Ns,L))
   allocate(nii_tmp(Ns),dii_tmp(Ns))
-
+  !allocate(sconvergence(2*Ns,L))
 
   !START DMFT LOOP SEQUENCE:
   !==============================================================
@@ -53,6 +53,9 @@ program ahm_matsubara_disorder
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
      call solve_sc_impurity_mpi()
 
+
+     !sconvergence(1:Ns,1:L)=sigma(1,1:Ns,1:L)
+     !sconvergence(Ns+1:2*ns,1:L)=sigma(2,1:Ns,1:L)
      converged=check_convergence(sigma(1,:,:)+sigma(2,:,:),eps_error,Nsuccess,nloop,id=0)
      if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
@@ -73,13 +76,15 @@ contains
   subroutine setup_initial_sc_sigma()
     logical :: check1,check2,check
     if(mpiID==0)then
-       inquire(file="LSigma.ipt",exist=check1)
-       inquire(file="LSelf.ipt",exist=check2)
+       inquire(file="LSigma_iw.data",exist=check1)
+       if(.not.check1)inquire(file="LSigma_iw.data.gz",exist=check1)
+       inquire(file="LSelf_iw.data",exist=check2)
+       if(.not.check2)inquire(file="LSelf_iw.data.gz",exist=check2)
        check=check1*check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma.ipt",sigma(1,1:Ns,1:L),wm)
-          call sread("LSelf.ipt",sigma(2,1:Ns,1:L),wm)
+          call sread("LSigma_iw.data",sigma(1,1:Ns,1:L),wm)
+          call sread("LSelf_iw.data",sigma(2,1:Ns,1:L),wm)
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -176,20 +181,20 @@ contains
     sold(:,is,:)  =  sigma(:,is,:)
     call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
     call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
-    n    = -real(fgt(1,L),8) ; delta= -u*fgt(2,0)
+    n    = -fgt(1,L) ; delta= -u*fgt(2,L)
     !
     nii_tmp(is)=2.d0*n; dii_tmp(is)=delta
     !
     fg0=zero ; calG=zero
     det       = abs(fg(1,is,:))**2    + fg(2,is,:)**2
-    fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) - U*(n-0.5d0)
+    fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) + U*(n-0.5d0)
     fg0(2,:)  = fg(2,is,:)/det        + sigma(2,is,:) + delta
     det       = abs(fg0(1,:))**2      + fg0(2,:)**2
     calG(1,:) = conjg(fg0(1,:))/det
     calG(2,:) = fg0(2,:)/det
     call fftgf_iw2tau(calG(1,:),fg0t(1,:),beta)
     call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
-    n0=-real(fg0t(1,L)) ; delta0= -u*fg0t(2,0)
+    n0=-fg0t(1,L) ; delta0= -u*fg0t(2,L)
     write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
     !
     sigma_tmp(:,is,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
@@ -249,7 +254,7 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
           call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
           call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
+          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.data",erandom)
 
           !Plot averaged local functions
           afg    = sum(fg,dim=2)/dble(Ns)
@@ -339,7 +344,7 @@ contains
        print*,abs(naverage-nread),xmu
        print*,""
        if(abs(naverage-nread)>nerror)convergence=.false.
-       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.ipt",iloop,xmu,abs(naverage-nread),append=.true.)
+       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
     endif
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu
