@@ -90,7 +90,8 @@ program adhmipt_matsubara_trap
      close(10)
   endif
 
-  call close_mpi()
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
 
 contains
 
@@ -300,7 +301,7 @@ contains
     n0=-real(fg0t(1,L)) ; delta0= -u*fg0t(2,0)
     write(750,"(I4,4(f16.12))",advance="yes")is,n,n0,delta,delta0
     sigma_tmp(:,is,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
-    sigma_tmp(:,is,:) =  weigth*sigma_tmp(:,is,:) + (1.d0-weigth)*sold(:,is,:)
+    sigma_tmp(:,is,:) =  weight*sigma_tmp(:,is,:) + (1.d0-weight)*sold(:,is,:)
 
     !    if(is==81) then
     !       write(128,*)"dentro solve per site per il sito ", is, "sigma_tmp vale"

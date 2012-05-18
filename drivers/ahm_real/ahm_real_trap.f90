@@ -23,9 +23,8 @@ program ahm_matsubara_trap
 
   !ALLOCATE WORKING ARRAYS
   !===============================================================
-  allocate(wm(L),tau(0:L))
-  wm(:)  = pi/beta*real(2*arange(1,L)-1,8)
-  tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
+  allocate(wr(L))
+  wr = linspace(-wmax,wmax,L,mesh=fmesh)
 
   allocate(fg(2,Ns,L))
   allocate(fg0(2,L))
@@ -59,7 +58,6 @@ program ahm_matsubara_trap
         converged=check_convergence(sigma(1,:,:)+sigma(2,:,:),eps_error,Nsuccess,nloop,id=0,tight=.true.) 
      endif
      if (densfixed) call search_mu(converged)
-	 call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
      call end_loop()
   enddo
@@ -94,15 +92,13 @@ contains
   subroutine setup_initial_sc_sigma()
     logical :: check1,check2,check
     if(mpiID==0)then
-       inquire(file="LSigma.ipt",exist=check1)
-       if(.not.check1)inquire(file="LSigma.ipt.gz",exist=check1)
-       inquire(file="LSelf.ipt",exist=check2)
-       if(.not.check2)inquire(file="LSelf.ipt.gz",exist=check2)
-       check=check1.AND.check2
+       inquire(file="LSigma_realw.ipt",exist=check1)
+       inquire(file="LSelf_realw.ipt",exist=check2)
+       check=check1*check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma.ipt",sigma(1,1:Ns,1:L))
-          call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
+          call sread("LSigma_realw.ipt",sigma(1,1:Ns,1:L),wr)
+          call sread("LSelf_realw.ipt",sigma(2,1:Ns,1:L),wr)
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -117,20 +113,22 @@ contains
   !******************************************************************
 
   subroutine get_sc_gloc_mpi()
-    complex(8) :: Gloc(2*Ns,2*Ns),gf_tmp(2,Ns,L)
+    complex(8) :: Gloc(2*Ns,2*Ns),gf_tmp(2,Ns,L),zeta1,zeta2
     integer    :: i,is
     call msg("Get local GF: (ETA --> fort.999)",id=0)
     call start_timer
     fg=zero ; gf_tmp=zero
-    do i=1+mpiID,L,mpiSIZE          ! parallelizziamo sulle frequenze... TODO memory proximity
+    do i=1+mpiID,L,mpiSIZE          !parallelizziamo sulle frequenze... TODO memory proximity
        Gloc=zero
        Gloc(1:Ns,1:Ns)          = -H0
        Gloc(Ns+1:2*Ns,Ns+1:2*Ns)=  H0
        do is=1,Ns
-          Gloc(is,is)      =  xi*wm(i)-a0trap-sigma(1,is,i)-etrap(is)
-          Gloc(Ns+is,Ns+is)= -conjg(Gloc(is,is))
+          zeta1=       cmplx(wr(i),eps,8)     -a0trap + xmu - sigma(1,is,i)      - etrap(is)
+          zeta2=-conjg(cmplx(wr(L+1-i),eps,8) -a0trap + xmu - sigma(1,is,L+1-i)) + etrap(is)
+          Gloc(is,is)      =  zeta1
+          Gloc(Ns+is,Ns+is)=  zeta2
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,i)!sigma(2,is,L+1-i)!this should be a simmetry in Matsubara!
+          Gloc(Ns+is,is)   = -sigma(2,is,L+1-i)
        enddo
        call mat_inversion_sym(Gloc,2*Ns)
        forall(is=1:Ns)
@@ -202,7 +200,7 @@ contains
 
   subroutine solve_per_site(is)
     integer                                      :: is,i
-    complex(8)                                   :: det(L)
+    complex(8)                                   :: det
     complex(8),dimension(:,:,:),allocatable,save :: sold
     complex(8),dimension(2,L)                    :: calG
     real(8),dimension(2,0:L)                     :: fgt,fg0t
@@ -210,25 +208,28 @@ contains
 
     if(.not.allocated(sold))allocate(sold(2,Ns,L))
     sold(:,is,:)  =  sigma(:,is,:)
-    call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
-    call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
-    n    = -fgt(1,L) ; delta= -u*fgt(2,L)
+    !
+    n    = -sum(dimag(fg(1,is,:))*fermi(wr,beta))*fmesh/pi ! densita' per spin
+    delta= -(u*sum(dimag(fg(2,is,:))*fermi(wr,beta))*fmesh/pi) 
     !
     nii_tmp(is)=2.d0*n; dii_tmp(is)=delta
     !
     fg0=zero ; calG=zero
-    det       = abs(fg(1,is,:))**2    + fg(2,is,:)**2
-    fg0(1,:)  = conjg(fg(1,is,:))/det + sigma(1,is,:) + U*(n-0.5d0)
-    fg0(2,:)  = fg(2,is,:)/det        + sigma(2,is,:) + delta
-    det       =  abs(fg0(1,:))**2     + fg0(2,:)**2
-    calG(1,:) =  conjg(fg0(1,:))/det
-    calG(2,:) =  fg0(2,:)/det
-    call fftgf_iw2tau(calG(1,:),fg0t(1,:),beta)
-    call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
-    n0=-fg0t(1,L) ; delta0= -u*fg0t(2,L)
+    do i=1,L
+       det      = fg(1,is,i)*conjg(fg(1,is,L+1-i)) + conjg(fg(2,is,L+1-i))*fg(2,is,i)
+       calG(1,i)= conjg(fg(1,is,L+1-i))/det  + sigma(1,is,i)      + u*(n-0.5d0)
+       calG(2,i)= fg(2,is,i)/det       + conjg(sigma(2,is,L+1-i)) + delta
+    end do
+    do i=1,L
+       det     =  calG(1,i)*conjg(calG(1,L+1-i)) + conjg(calG(2,L+1-i))*calG(2,i)
+       fg0(1,i)=  conjg(calG(1,L+1-i))/det
+       fg0(2,i)=  conjg(calG(2,L+1-i))/det
+    end do
+    n0    = -sum(dimag(fg0(1,:))*fermi(wr,beta))*fmesh/pi!/sum(dimag(fg(1,is,:)))
+    delta0= -u*sum(dimag(fg0(2,:))*fermi(wr,beta))*fmesh/pi
     write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
     !
-    sigma_tmp(:,is,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
+    sigma_tmp(:,is,:) =  solve_mpt_sc_sopt(fg0,wr,n,n0,delta,delta0,L)
     sigma_tmp(:,is,:) =  weight*sigma_tmp(:,is,:) + (1.d0-weight)*sold(:,is,:)
     !
   end subroutine solve_per_site
@@ -287,39 +288,21 @@ contains
        call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta_av,append=TT)
 
        call system("rm -fv *site.ipt *.ipt.gz")   ! se append=false non serve ...
-       !       call system("rm -fv *site.ipt *loc*.ipt *.ipt.gz")   ! se append=false non serve ... !
-
-       !-------------------------------------------------------------------------------------------       
-       !      to be removed.. after debugging store only compact forms of
-       !      Self-energy and Green functions to save space 
-
-       do i=1,Ns
-          call splot("Gloc_iw_site.ipt",wm,fg(1,i,1:L),append=TT)
-          call splot("Floc_iw_site.ipt",wm,fg(2,i,1:L),append=TT)
-          call splot("Sigma_iw_site.ipt",wm,sigma(1,i,1:L),append=TT)
-          call splot("Self_iw_site.ipt",wm,sigma(2,i,1:L),append=TT)
-       enddo
-       !******************************************************************************
 
        !   plotting selected green-function and self-energies for quick
        !   data processing and debugging
-
-       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L),append=FF)
-       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L),append=FF)
-       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L),append=TT) ! controllo come evolvono le selfenergie con le iterazioni 
-       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L),append=TT)
-
-
-       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L),append=FF)
-       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L),append=FF)
-       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L),append=TT)
-       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L),append=TT)
-
-
-       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L),append=FF)
-       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L),append=FF)
-       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L),append=TT)
-       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L),append=TT)
+       call splot("Gloc_realw_center.ipt",wr,fg(1,center,1:L),append=FF)
+       call splot("Floc_realw_center.ipt",wr,fg(2,center,1:L),append=FF)
+       call splot("Sigma_realw_center.ipt",wr,sigma(1,center,1:L),append=TT) 
+       call splot("Self_realw_center.ipt",wr,sigma(2,center,1:L),append=TT)
+       call splot("Gloc_realw_border.ipt",wr,fg(1,border,1:L),append=FF)
+       call splot("Floc_realw_border.ipt",wr,fg(2,border,1:L),append=FF)
+       call splot("Sigma_realw_border.ipt",wr,sigma(1,border,1:L),append=TT)
+       call splot("Self_realw_border.ipt",wr,sigma(2,border,1:L),append=TT)
+       call splot("Gloc_realw_corner.ipt",wr,fg(1,corner,1:L),append=FF)
+       call splot("Floc_realw_corner.ipt",wr,fg(2,corner,1:L),append=FF)
+       call splot("Sigma_realw_corner.ipt",wr,sigma(1,corner,1:L),append=TT)
+       call splot("Self_realw_corner.ipt",wr,sigma(2,corner,1:L),append=TT)
 
 
        !          STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
@@ -327,10 +310,10 @@ contains
        !          so that in case of chrashes we can automatiucally restart with 
        !          a meaningful self-energy (just unzip LSigma.ipt.gz)
        !
-       call splot("LSigma.ipt",sigma(1,1:Ns,1:L))
-       call splot("LSelf.ipt",sigma(2,1:Ns,1:L))
-       call splot("LG.ipt",fg(1,1:Ns,1:L))
-       call splot("LF.ipt",fg(2,1:Ns,1:L))
+       call splot("LSigma_realw.ipt",sigma(1,1:Ns,1:L),wr(1:L))
+       call splot("LSelf_realw.ipt",sigma(2,1:Ns,1:L),wr(1:L))
+       call splot("LG_realw.ipt",fg(1,1:Ns,1:L),wr(1:L))
+       call splot("LF_realw.ipt",fg(2,1:Ns,1:L),wr(1:L))
 
        !--------------------------------------------------------------------------------
 
@@ -351,32 +334,6 @@ contains
           print*,"max =",delta_max
 
           print*,"**********************     END  SUMMARY        *************************"
-
-          !      redundant..
-
-          !          call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.ipt",nii)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.ipt",dii)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
-
-
-          !       do i=1,Ns
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_site.ipt",wm,fg(1,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_site.ipt",wm,fg(2,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_site.ipt",wm,sigma(1,i,1:L),append=TT)
-          !          call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_site.ipt",wm,sigma(2,i,1:L),append=TT)
-          !       enddo
-
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LSelf.ipt",sigma(2,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1,1:Ns,1:L))
-          !          call splot(trim(adjustl(trim(name_dir)))//"/LF.ipt",fg(2,1:Ns,1:L))
-
-
-          ! afg(:,:)   =sum(fg(1:2,1:Ns,1:L),dim=2)/dble(Ns)
-          ! asig(:,:)  =sum(sigma(1:2,1:Ns,1:L),dim=2)/dble(Ns)
-          ! call splot(trim(adjustl(trim(name_dir)))//"/Gave_iw.ipt",wm,afg(1,1:L))
-          ! call splot(trim(adjustl(trim(name_dir)))//"/Sigmaave_iw.ipt",wm,asig(1,1:L))
-
 
           !BUILD A GRID FOR  LATTICE PLOTS:
 

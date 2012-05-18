@@ -78,14 +78,15 @@ program hmmpt_matsubara_disorder
      !SOLVE IMPURITY MODEL, FOR ALL LATTICE SITES:
      call solve_impurity_mpi()
 
-     converged=check_convergence(sigma,eps_error,Nsuccess,nloop,id=0)
+     converged=check_convergence(fg,eps_error,Nsuccess,nloop,id=0)!sigma
      if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_out(converged)
      call end_loop()
   enddo
   if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
-  call close_mpi()
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
 
 
 contains
@@ -215,7 +216,7 @@ contains
     !Evaluate self-energy and put it into Sigma_tmp to be mpi_reduced later on
     !
     sigma_tmp(is,:) = solve_mpt_matsubara(fg0,n,n0,xmu0)
-    sigma_tmp(is,:) = weigth*sigma_tmp(is,:) + (1.d0-weigth)*sold(is,:)
+    sigma_tmp(is,:) = weight*sigma_tmp(is,:) + (1.d0-weight)*sold(is,:)
     !
   end subroutine solve_per_site
 
@@ -322,6 +323,7 @@ contains
 
 
   subroutine search_mu(convergence)
+    integer, save         ::nindex
     real(8)               :: naverage
     logical,intent(inout) :: convergence
     real(8)               :: ndelta1
@@ -359,6 +361,6 @@ contains
 
 
 
-end program
+end program hmmpt_matsubara_disorder
 
 

@@ -85,7 +85,8 @@ program hmmpt_real_disorder
      call end_loop()
   enddo
   if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
-  call close_mpi()
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
 
 
 contains
