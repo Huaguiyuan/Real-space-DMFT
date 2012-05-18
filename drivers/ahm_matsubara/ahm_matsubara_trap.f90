@@ -59,7 +59,8 @@ program ahm_matsubara_trap
         converged=check_convergence(sigma(1,:,:)+sigma(2,:,:),eps_error,Nsuccess,nloop,id=0,tight=.true.) 
      endif
      if (densfixed) call search_mu(converged)
-	 call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
+
+     call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
      call end_loop()
   enddo
@@ -324,7 +325,7 @@ contains
 
        !          STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
        !          I do it at every interaction (even though is much slower) 
-       !          so that in case of chrashes we can automatiucally restart with 
+       !          so that in case of chrashes we can automatically restart with 
        !          a meaningful self-energy (just unzip LSigma.ipt.gz)
        !
        call splot("LSigma.ipt",sigma(1,1:Ns,1:L))
@@ -400,6 +401,10 @@ contains
                 cdwij(row,col)=cdw(i)
              enddo
           enddo
+          call splot("2d_nVSij.data",grid_y,nij(0,:))
+          call splot("2d_deltaVSij.data",grid_y,dij(0,:))
+          call splot("2d_etrapVSij.data",grid_y,eij(0,:))
+          call splot("2d_cdwVSij.data",grid_y,cdwij(0,:))
           call splot("3d_nVSij.data",grid_x,grid_y,nij)
           call splot("3d_deltaVSij.data",grid_x,grid_y,dij)
           call splot("3d_etrapVSij.data",grid_x,grid_y,eij)
