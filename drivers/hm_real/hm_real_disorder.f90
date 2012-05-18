@@ -85,7 +85,8 @@ program hmmpt_real_disorder
      call end_loop()
   enddo
   if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
-  call close_mpi()
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
 
 
 contains
@@ -99,11 +100,11 @@ contains
   subroutine setup_initial_sigma()
     logical :: check
     if(mpiID==0)then
-       inquire(file="LSigma_realw.restart",exist=check)
-       if(.not.check)inquire(file="LSigma_realw.restart.gz",exist=check)
+       inquire(file="LSigma_realw.data",exist=check1)
+       if(.not.check1)inquire(file="LSigma_realw.data.gz",exist=check)
        if(check)then
           call msg(bg_yellow("Reading Self-energy from file:"),lines=2)
-          call sread("LSigma_realw.restart",sigma(1:Ns,1:L),wr(1:L))
+          call sread("LSigma_realw.data",sigma(1:Ns,1:L),wr(1:L))
        endif
     else
        call msg(bg_yellow("Using Hartree-Fock self-energy"),lines=2)
@@ -274,7 +275,7 @@ contains
     if(mpiID==0)then
        nimp=sum(nii(:))/dble(Ns)
        print*,"nimp  =",nimp
-       call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
+       call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.data",iloop,nimp,append=TT)
        call splot(trim(adjustl(trim(name_dir)))//"/LSigma_realw.data",sigma(1:Ns,1:L),wr(1:L))
        call splot(trim(adjustl(trim(name_dir)))//"/LG_realw.data",fg(1:Ns,1:L),wr(1:L))
     endif
@@ -284,8 +285,8 @@ contains
        if(mpiID==0)then
           afg(:)  = sum(fg(1:Ns,1:L),dim=1)/dble(Ns)
           asig(:) = sum(sigma(1:Ns,1:L),dim=1)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/aDOS.ipt",wr,-dimag(afg(:))/pi)
-          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_realw.ipt",wr,asig)
+          call splot(trim(adjustl(trim(name_dir)))//"/aDOS.data",wr,-dimag(afg(:))/pi)
+          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_realw.data",wr,asig)
        endif
 
 
@@ -334,7 +335,7 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
           call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
           call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
+          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.data",erandom)
 
 
           call get_moments(nii,mean,sdev,var,skew,kurt)
@@ -406,7 +407,7 @@ contains
        write(*,"(A,f15.12)")"dn=",abs(naverage-nread)
        print*,""
        if(abs(naverage-nread)>nerror)convergence=.false.
-       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.ipt",iloop,xmu,abs(naverage-nread),append=.true.)
+       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
     endif
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu

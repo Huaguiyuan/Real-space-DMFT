@@ -78,14 +78,15 @@ program hmmpt_matsubara_disorder
      !SOLVE IMPURITY MODEL, FOR ALL LATTICE SITES:
      call solve_impurity_mpi()
 
-     converged=check_convergence(sigma,eps_error,Nsuccess,nloop,id=0)
+     converged=check_convergence(fg,eps_error,Nsuccess,nloop,id=0)!sigma
      if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_out(converged)
      call end_loop()
   enddo
   if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
-  call close_mpi()
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
 
 
 contains
@@ -99,11 +100,11 @@ contains
   subroutine setup_initial_sigma()
     logical :: check
     if(mpiID==0)then
-       inquire(file="LSigma_iw.restart",exist=check)
-       if(.not.check)inquire(file="LSigma_iw.restart.gz",exist=check)
+       inquire(file="LSigma_iw.data",exist=check)
+       if(.not.check)inquire(file="LSigma_iw.data.gz",exist=check)
        if(check)then
           call msg(bg_yellow("Reading Self-energy from file:"),lines=2)
-          call sread("LSigma_iw.restart",sigma(1:Ns,1:L),wm(1:L))
+          call sread("LSigma_iw.data",sigma(1:Ns,1:L),wm(1:L))
        endif
     else
        call msg(bg_yellow("Using Hartree-Fock self-energy"),lines=2)
@@ -215,7 +216,7 @@ contains
     !Evaluate self-energy and put it into Sigma_tmp to be mpi_reduced later on
     !
     sigma_tmp(is,:) = solve_mpt_matsubara(fg0,n,n0,xmu0)
-    sigma_tmp(is,:) = weigth*sigma_tmp(is,:) + (1.d0-weigth)*sold(is,:)
+    sigma_tmp(is,:) = weight*sigma_tmp(is,:) + (1.d0-weight)*sold(is,:)
     !
   end subroutine solve_per_site
 
@@ -243,16 +244,16 @@ contains
     if(mpiID==0)then
        nimp=sum(nii)/real(Ns,8)
        print*,"nimp  =",nimp
-       call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.ipt",iloop,nimp,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.ipt",sigma,wm)
-       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.ipt",fg,wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/navVSiloop.data",iloop,nimp,append=TT)
+       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigma,wm)
+       call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg,wm)
 
        if(converged)then
           !Plot averaged local functions
           afg(:)  = sum(fg(1:Ns,1:L),dim=1)/dble(Ns) 
           asig(:) = sum(sigma(1:Ns,1:L),dim=1)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/aG_iw.ipt",wm,afg)
-          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_iw.ipt",wm,asig)
+          call splot(trim(adjustl(trim(name_dir)))//"/aG_iw.data",wm,afg)
+          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_iw.data",wm,asig)
 
           !Plot observables: n,n_cdw,rho,sigma,zeta
           do is=1,Ns
@@ -273,7 +274,7 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
           call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
           call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.ipt",erandom)
+          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.data",erandom)
 
 
           call get_moments(nii,mean,sdev,var,skew,kurt)
@@ -322,6 +323,7 @@ contains
 
 
   subroutine search_mu(convergence)
+    integer, save         ::nindex
     real(8)               :: naverage
     logical,intent(inout) :: convergence
     real(8)               :: ndelta1
@@ -348,7 +350,7 @@ contains
        write(*,"(A,f15.12)")"dn=",abs(naverage-nread)
        print*,""
        if(abs(naverage-nread)>nerror)convergence=.false.
-       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.ipt",iloop,xmu,abs(naverage-nread),append=.true.)
+       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
     endif
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu
@@ -359,6 +361,6 @@ contains
 
 
 
-end program
+end program hmmpt_matsubara_disorder
 
 

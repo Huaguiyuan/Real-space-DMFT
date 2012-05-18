@@ -61,21 +61,14 @@ module RDMFT_VARS_GLOBAL
 
   !Other variables:
   !=========================================================
-  character(len=20)                  :: name_dir
-  logical                            :: pbcflag
-  logical                            :: symmflag
-  logical                            :: densfixed
-
+  character(len=20) :: name_dir
+  logical           :: pbcflag
+  logical           :: symmflag
+  logical           :: densfixed
 
   !Random energies
   !=========================================================
   real(8),dimension(:),allocatable   :: erandom,etrap
-
-
-  !Fix density
-  !=========================================================
-  real(8) :: nread,nerror,ndelta
-  integer :: nindex
 
 
   interface symmetrize
@@ -133,7 +126,7 @@ contains
     store_size=1024
 
     allocate(help_buffer(27))
-    help_buffer=([&
+    help_buffer=([character(len=256)::&
          'NAME',&
          '  xxx_disorder/trap',&
          '',&

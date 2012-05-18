@@ -1,11 +1,16 @@
   !START MPI:
   !=====================================================================
-  call start_mpi()
+  call MPI_INIT(mpiERR)
+  call MPI_COMM_RANK(MPI_COMM_WORLD,mpiID,mpiERR)
+  call MPI_COMM_SIZE(MPI_COMM_WORLD,mpiSIZE,mpiERR)
+  write(*,"(A,I4,A,I4,A)")'Processor ',mpiID,' of ',mpiSIZE,' is alive'
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
 
   !READ INPUT FILES:
   !=====================================================================
   call read_input("inputIPT.in")
   call rdmft_read_input("inputRDMFT.in")
+
 
   !CHECK ODD NSIDE FOR TRAP:
   !=====================================================================
@@ -67,10 +72,17 @@
   else
      densfixed=.true.
      if (mpiID==0) then 
+<<<<<<< HEAD
         write(*,"(A,I6)")"Working at fixed total particle number         =",N_wanted
         write(*,"(A,F12.9)")"Required tolerance over the number of particles=",N_tol
         write(*,"(A,F12.9)")"Starting value for the trap compressibility    =",chitrap
         write(*,"(A,F12.9)")"Initial step in mu                             =",ndelta
+=======
+        write(*,"(A,I)")"Working at fixed total particle number",N_wanted
+        write(*,"(A,F12.9)")"Required tolerance over the number of particles",N_tol
+        write(*,"(A,F12.9)")"Starting value for the trap compressibility",chitrap
+        write(*,"(A,F12.9)")"Initial step in mu",ndelta!deltan
+>>>>>>> devel
      endif
   endif
 
