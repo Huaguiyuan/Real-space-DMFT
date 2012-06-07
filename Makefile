@@ -1,15 +1,5 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-EXE	=ahm_matsubara_trap
+EXE	=ahm_matsubara_disorder
 DIR	=drivers/ahm_matsubara
-=======
-EXE	=hm_matsubara_disorder
-DIR	=drivers/hm_matsubara
->>>>>>> devel
-=======
-EXE	=ahm_real_disorder
-DIR	=drivers/ahm_real
->>>>>>> devel
 DIREXE	=$(HOME)/.bin
 FC	=mpif90
 
@@ -46,12 +36,19 @@ debug: 	version $(OBJS_DEB)
 	@echo "created" $(DIREXE)/$(EXE)
 
 
-data: 	version $(OBJS)
-	@echo " ........... compile: get_data ........... "
-	$(FC) $(STD) $(OBJS) $(DIR)/get_data_$(EXE).f90 -o $(DIREXE)/get_data_$(EXE) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
+pade: 	version $(OBJS)
+	@echo " ........... compile: rdmft_pade ........... "
+	$(FC) $(STD) $(OBJS) drivers/pade_matsubara_to_real.f90 -o $(DIREXE)/pade_matsubara_to_real $(LIBDMFT) $(SFLIBS) $(SFMODS) 
 	@echo " ...................... done .............................. "
 	@echo ""
-	@echo "created" $(DIREXE)/get_data_$(EXE)
+	@echo "created" $(DIREXE)/pade_matsubara_to_real
+
+# data: 	version $(OBJS)
+# 	@echo " ........... compile: get_data ........... "
+# 	$(FC) $(STD) $(OBJS) $(DIR)/get_data_$(EXE).f90 -o $(DIREXE)/get_data_$(EXE) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
+# 	@echo " ...................... done .............................. "
+# 	@echo ""
+# 	@echo "created" $(DIREXE)/get_data_$(EXE)
 
 
 RDMFT_VARS_GLOBAL.o: RDMFT_VARS_GLOBAL.f90

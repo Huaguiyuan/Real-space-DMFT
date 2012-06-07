@@ -12,7 +12,7 @@ program ahm_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  complex(8),allocatable,dimension(:,:)   :: fg0,sconvergence
+  complex(8),allocatable,dimension(:,:)   :: fg0
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
   logical                                 :: converged,converged1,converged2
   real(8)                                 :: r
@@ -37,7 +37,6 @@ program ahm_matsubara_disorder
   !
   allocate(sigma_tmp(2,Ns,L))
   allocate(nii_tmp(Ns),dii_tmp(Ns))
-  allocate(sconvergence(2*Ns,L))
 
   !START DMFT LOOP SEQUENCE:
   !==============================================================
@@ -53,9 +52,8 @@ program ahm_matsubara_disorder
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
      call solve_sc_impurity_mpi()
 
-     !sconvergence(1:Ns,1:L)=fg(1,1:Ns,1:L);sconvergence(Ns+1:2*ns,1:L)=fg(2,1:Ns,1:L)
-     converged=check_convergence_local(sigma(1,:,1:Lerr)+sigma(2,:,1:Lerr),eps_error,Nsuccess,nloop,id=0)
-
+     !converged=check_convergence_local(sigma(1,:,1:Lerr)+sigma(2,:,1:Lerr),eps_error,Nsuccess,nloop,id=0)
+     converged = check_convergence_scalar(dii,eps_error,Nsuccess,nloop,id=0)
      ! !##ACTHUNG!!
      ! converged1=check_convergence_local(fg(1,:,1:Lerr),eps_error,Nsuccess,nloop,id=0,index=1,total=2)
      ! converged2=check_convergence_local(fg(2,:,1:Lerr),eps_error,Nsuccess,nloop,id=0,index=2,total=2)
@@ -152,7 +150,7 @@ contains
        dii_tmp  =zero
        do is=1+mpiID,Ns,mpiSIZE
           call solve_per_site(is)
-          call eta(is,Ns,unit=800)
+          call eta(is,Ns)
        enddo
        call stop_timer
        call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
@@ -258,9 +256,9 @@ contains
           if(.not.printf)then
              call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigma(1,1:Ns,1:L),wm(1:L))
              call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.data",sigma(2,1:Ns,1:L),wm(1:L))
-             call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg(1,1:Ns,1:L),wm(1:L))
-             call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.data",fg(2,1:Ns,1:L),wm(1:L))
           endif
+          call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg(1,1:Ns,1:L),wm(1:L))
+          call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.data",fg(2,1:Ns,1:L),wm(1:L))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Ns
