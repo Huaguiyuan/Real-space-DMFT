@@ -9,7 +9,7 @@ module RDMFT_VARS_GLOBAL
   USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
   USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_gj,mat_inversion
-  USE RANDOM,    ONLY:nrand
+  USE RANDOM,    ONLY:nrand,init_random_number
   USE STATISTICS
   USE INTEGRATE, ONLY:kronig
   USE TOOLS,     ONLY:fermi,check_convergence
@@ -42,8 +42,8 @@ module RDMFT_VARS_GLOBAL
 
   !Local density and order parameter profiles:
   !=========================================================
-  real(8),dimension(:),allocatable   :: nii,dii
-
+  real(8),dimension(:),allocatable    :: nii,dii
+  complex(8),dimension(:),allocatable :: cdii
 
   !Gloabl variables
   !=========================================================
