@@ -8,7 +8,7 @@ module RDMFT_VARS_GLOBAL
   USE COMMON_VARS
   USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
-  USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_gj,mat_inversion
+  USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_her,mat_inversion
   USE RANDOM,    ONLY:nrand,init_random_number
   USE STATISTICS
   USE INTEGRATE, ONLY:kronig

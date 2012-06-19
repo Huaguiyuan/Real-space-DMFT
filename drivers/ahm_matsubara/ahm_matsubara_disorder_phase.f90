@@ -16,12 +16,15 @@ program ahm_matsubara_disorder
   real(8),allocatable,dimension(:)        :: nii_tmp
   complex(8),allocatable,dimension(:)     :: cdii_tmp
   logical                                 :: converged,converged1,converged2
-  real(8)                                 :: r
+  real(8)                                 :: r,phasesc
   integer                                 :: i,is,Lerr
 
   !GLOBAL INITIALIZATION:
   !===============================================================
   include "init_global_disorder.f90"
+  call init_random_number
+  call random_number(r)
+  call parse_cmd_variable(phasesc,"PHASESC",default=r*pi2)
 
   allocate(cdii(Ns))
 
@@ -74,8 +77,6 @@ contains
 
   subroutine setup_initial_sc_sigma()    
     logical :: check1,check2,check
-    complex(8) :: sc_mod
-    real(8)    :: sc_phase
     if(mpiID==0)then
        inquire(file="LSigma_iw.data",exist=check1)
        if(.not.check1)inquire(file="LSigma_iw.data.gz",exist=check1)
@@ -88,11 +89,8 @@ contains
           call sread("LSelf_iw.data",sigma(2,1:Ns,1:L),wm)
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
-          call init_random_number
-          call random_number(sc_phase)
-          !sc_phase=-pi + sc_phase*pi2
-          sc_mod=abs(deltasc)*exp(xi*pi2*sc_phase)
-          sigma(1,:,:)=zero ; sigma(2,:,:)=-sc_mod
+          phasesc=mod(phasesc,pi2)
+          sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc*exp(xi*phasesc)
        endif
     endif
     call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
@@ -114,12 +112,12 @@ contains
        Gloc(1:Ns,1:Ns)          = -H0
        Gloc(Ns+1:2*Ns,Ns+1:2*Ns)=  H0
        do is=1,Ns
-          Gloc(is,is)      =  xi*wm(i)-sigma(1,is,i)       -erandom(is)+xmu
-          Gloc(Ns+is,Ns+is)=  xi*wm(i)+conjg(sigma(1,is,i))+erandom(is)-xmu !-conjg(Gloc(is,is))
-          Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -conjg(sigma(2,is,i))
+          Gloc(is,is)      =  xi*wm(i)+xmu-sigma(1,is,i)-erandom(is)
+          Gloc(Ns+is,Ns+is)= -conjg(Gloc(is,is))
+          Gloc(is,Ns+is)   = -Sigma(2,is,i)
+          Gloc(Ns+is,is)   = -conjg(Sigma(2,is,i))
        enddo
-       call mat_inversion_sym(Gloc,2*Ns)
+       call mat_inversion(Gloc)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)
@@ -212,8 +210,10 @@ contains
     call fftff_iw2tau(calG(2,:),ff0t(0:),beta)
     n0=-fg0t(L) ; delta0= -u*ff0t(L)
 
-    call splot("calG_iw.ipt",wm,calG(1,:),append=TT)
-    call splot("calF_iw.ipt",wm,calG(2,:),append=TT)
+    ! if(mpiID==0)then
+    !    call splot("calG_iw.ipt",wm,calG(1,:),append=TT)
+    !    call splot("calF_iw.ipt",wm,calG(2,:),append=TT)
+    ! endif
 
     sc_mod=abs(delta)
     sc0_mod=abs(delta0)
@@ -246,8 +246,8 @@ contains
     logical                   :: converged
     real(8),dimension(2,0:L)  :: fgt
     complex(8),dimension(2,L) :: afg,asigma
-    character(len=4) :: loop
-    real(8)                         :: sc_phase,sc_mod
+    character(len=4)          :: loop
+    real(8)                   :: sc_phase,sc_mod
 
 
     if(mpiID==0)then
@@ -256,7 +256,7 @@ contains
        nimp = sum(nii)/dble(Ns)
        delta= sum(cdii)/dble(Ns)
        sc_mod=abs(delta)
-       sc_phase=phase(delta)!atan2(dimag(delta),real(delta,8))
+       sc_phase=phase(delta)
        print*,"nimp  =",nimp
        print*,"delta =",sc_mod,sc_phase
        call splot(trim(adjustl(trim(name_dir)))//"/nVSiloop.data",iloop,nimp,append=TT)
@@ -278,6 +278,7 @@ contains
           endif
           call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg(1,1:Ns,1:L),wm(1:L))
           call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.data",fg(2,1:Ns,1:L),wm(1:L))
+
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Ns
