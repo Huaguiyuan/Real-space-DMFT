@@ -117,7 +117,7 @@ contains
           Gloc(is,Ns+is)   = -Sigma(2,is,i)
           Gloc(Ns+is,is)   = -conjg(Sigma(2,is,i))
        enddo
-       call mat_inversion(Gloc)
+       call mat_inversion(Gloc)!,2*Ns)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)

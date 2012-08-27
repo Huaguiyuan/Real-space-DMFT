@@ -8,14 +8,13 @@ module RDMFT_VARS_GLOBAL
   USE COMMON_VARS
   USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
-  USE MATRIX,    ONLY:mat_inversion_sym,mat_inversion_her,mat_inversion
+  USE MATRIX !,    ONLY:mat_inversion_sym,mat_inversion_her,mat_inversion
   USE RANDOM,    ONLY:nrand,init_random_number
   USE STATISTICS
   USE INTEGRATE, ONLY:kronig
   USE TOOLS,     ONLY:fermi,check_convergence
   USE DMFT_IPT
   USE MPI
-  USE OMP_LIB
   implicit none
 
   !Revision software:
@@ -91,8 +90,7 @@ module RDMFT_VARS_GLOBAL
        N_wanted, &
        N_tol,    &
        chitrap,  &   
-       pbcflag,  &
-       omp_num_threads
+       pbcflag
 
 
 
@@ -117,7 +115,6 @@ contains
     N_wanted        = Nside**2/2
     N_tol           = 0.1d0
     chitrap         = 0.1d0 
-    omp_num_threads = 1
     pbcflag         = .true.
     idum            = 1234567
 
@@ -152,7 +149,6 @@ contains
          ' chitrap=[0.1] -- Tentative value of the global trap compressibility',&
          ' pbcflag=[T]   -- periodic boundary conditions.',&
          ' idum=[1234567]-- initial seed for the random variable sample.',&
-         ' omp_num_threads=[1] -- fix the number of threads in OMP environment.',&
          '  '])
     call parse_cmd_help(help_buffer)
 
@@ -181,11 +177,7 @@ contains
     call parse_cmd_variable(chitrap,"CHITRAP")
     call parse_cmd_variable(symmflag,"SYMMFLAG")
     call parse_cmd_variable(pbcflag,"PBCFLAG")
-    call parse_cmd_variable(omp_num_threads,"OMP_NUM_THREADS")
     call parse_cmd_variable(idum,"IDUM")
-
-    !SET OMP THREADS NUMBER
-    call omp_set_num_threads(OMP_NUM_THREADS)
 
     !Print on the screen used vars
     if(mpiID==0)then
