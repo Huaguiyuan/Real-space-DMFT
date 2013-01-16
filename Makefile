@@ -2,38 +2,53 @@
 include lib.mk
 #=========================================================================
 FC=$(SFMPI)/mpif90
-EXE   =ahm_matsubara_disorder
-#EXE   =ahm_matsubara_disorder_phase
+EXE   =ahm_matsubara_trap
 DIR   =drivers/ahm_matsubara
 DIREXE=$(HOME)/.bin
 
-STD+=-static
-OPT+=-static
-DEB+=-static
+# STD+=-static
+# OPT+=-static
+# DEB+=-static
 
-OBJS=RDMFT_VARS_GLOBAL.o
-OBJS_DEB=RDMFT_VARS_GLOBAL_DEB.o
-all: 	version $(OBJS)
-	@echo " ........... compile: standard ........... "
-	$(FC) $(STD) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
+.SUFFIXES: .f90 
+OBJS = SOLVER_VARS_GLOBAL.o IPT_SC_MATS.o  IPT_SC_SOPT.o IPT_MATS.o IPT_SOPT.o  SOLVER_INTERFACE.o RDMFT_VARS_GLOBAL.o
+
+ARGS= $(SFMODS) $(SFLIBS)
+ARGS_DEB=$(SFMODS_DEB) $(SFLIBS_DEB)
+BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
+
+#=================STANDARD COMPILATION====================================
+all: FLAG=$(STD)
+all: version $(OBJS)
+	@echo " ........... compile: optimized ........... "
+	@echo $(VER)
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
 	@echo " ...................... done .............................. "
 	@echo ""
 	@echo "created" $(DIREXE)/$(EXE)
 
+#================OPTIMIZED COMPILATION====================================
+opt: FLAG=$(OPT)
 opt: 	version $(OBJS)
 	@echo " ........... compile: optimized ........... "
-	$(FC) $(OPT) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
+	@echo $(VER)
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
 	@echo " ...................... done .............................. "
 	@echo ""
 	@echo "created" $(DIREXE)/$(EXE)
 
 
-debug: 	version $(OBJS_DEB)
+#================DEBUGGIN COMPILATION=====================================
+debug: FLAG=$(DEB)
+debug: 	version $(OBJS)
 	@echo " ........... compile : debug   ........... "
-	$(FC) $(DEB) $(OBJS_DEB) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE) $(LIBDMFT_DEB) $(SFLIBS_DEB) $(SFMODS_DEB) 
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS_DEB)
 	@echo " ...................... done .............................. "
 	@echo ""
 	@echo "created" $(DIREXE)/$(EXE)
+
+.f90.o:	
+	$(FC) $(FLAG) -c $< $(SFMODS) 
 
 
 pade: 	version $(OBJS)
@@ -43,18 +58,12 @@ pade: 	version $(OBJS)
 	@echo ""
 	@echo "created" $(DIREXE)/pade_matsubara_to_real
 
-# data: 	version $(OBJS)
-# 	@echo " ........... compile: get_data ........... "
-# 	$(FC) $(STD) $(OBJS) $(DIR)/get_data_$(EXE).f90 -o $(DIREXE)/get_data_$(EXE) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
-# 	@echo " ...................... done .............................. "
-# 	@echo ""
-# 	@echo "created" $(DIREXE)/get_data_$(EXE)
-
-
-RDMFT_VARS_GLOBAL.o: RDMFT_VARS_GLOBAL.f90
-	$(FC) $(STD) -c RDMFT_VARS_GLOBAL.f90 $(SFMODS) 
-RDMFT_VARS_GLOBAL_DEB.o: RDMFT_VARS_GLOBAL.f90
-	$(FC) $(DEB) -c RDMFT_VARS_GLOBAL.f90 $(SFMODS_DEB) -o  RDMFT_VARS_GLOBAL_DEB.o
+data: 	version $(OBJS)
+	@echo " ........... compile: get_data ........... "
+	$(FC) $(STD) $(OBJS) $(DIR)/get_data_$(EXE).f90 -o $(DIREXE)/get_data_$(EXE)_$(BRANCH) $(LIBDMFT) $(SFLIBS) $(SFMODS) 
+	@echo " ...................... done .............................. "
+	@echo ""
+	@echo "created" $(DIREXE)/get_data_$(EXE)
 
 clean: 
 	@echo 'removing *.mod *.o *~'

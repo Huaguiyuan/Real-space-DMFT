@@ -2,9 +2,10 @@
 !     PROGRAM  : VARS_GLOBAL
 !     TYPE     : Module
 !     PURPOSE  : Contains global variables
-!     AUTHORS  : Adriano Amaricci
+!     AUTHORS  : Adriano Amaricci & Antonio Privitera
 !###############################################################
 module RDMFT_VARS_GLOBAL
+  !Scientific library
   USE COMMON_VARS
   USE TIMER, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
@@ -13,7 +14,9 @@ module RDMFT_VARS_GLOBAL
   USE STATISTICS
   USE INTEGRATE, ONLY:kronig
   USE TOOLS,     ONLY:fermi,check_convergence
-  USE DMFT_IPT
+  !Impurity solver interface
+  USE SOLVER_INTERFACE
+  !parallel library
   USE MPI
   implicit none
 
@@ -41,10 +44,11 @@ module RDMFT_VARS_GLOBAL
 
   !Local density and order parameter profiles:
   !=========================================================
-  real(8),dimension(:),allocatable    :: nii,dii
+  real(8),dimension(:),allocatable    :: nii,dii,gap_ii
   complex(8),dimension(:),allocatable :: cdii
 
-  !Gloabl variables
+
+  !Global variables
   !=========================================================
   real(8) :: Wdis               !Disorder strength
   integer :: idum               !disorder seed
@@ -60,10 +64,10 @@ module RDMFT_VARS_GLOBAL
 
   !Other variables:
   !=========================================================
-  character(len=20) :: name_dir
-  logical           :: pbcflag
-  logical           :: symmflag
-  logical           :: densfixed
+  character(len=20)                  :: name_dir
+  logical                            :: pbcflag
+  logical                            :: symmflag
+  logical                            :: densfixed
 
   !Random energies
   !=========================================================
@@ -74,6 +78,10 @@ module RDMFT_VARS_GLOBAL
      module procedure c_symmetrize,r_symmetrize
   end interface symmetrize
 
+   interface reshuffled
+       module procedure dv_reshuffled,zv_reshuffled,&
+                        dm_reshuffled,zm_reshuffled
+   end interface reshuffled
 
   !Namelist:
   !=========================================================
@@ -226,13 +234,13 @@ contains
              ij2site(row-Nside/2,col-Nside/2)=i       ! a implementare le simmetrie
           endif
           !
-          if(pbcflag)then
+          if(pbcflag)then ! PBC are implemented using the state labels and so they are mpt affected by symm
              !HOPPING w/ PERIODIC BOUNDARY CONDITIONS
              link(1)= row*Nside+1              + mod(col+1,Nside)  ;
              link(3)= row*Nside+1              + (col-1)           ; if((col-1)<0)link(3)=(Nside+(col-1))+row*Nside+1
              link(2)= mod(row+1,Nside)*Nside+1 + col               ; 
              link(4)= (row-1)*Nside+1          + col               ; if((row-1)<0)link(4)=col+(Nside+(row-1))*Nside+1
-          else
+          else   
              !without PBC
              link(1)= row*Nside+1              + col+1   ; if((col+1)==Nside)link(1)=0
              link(3)= row*Nside+1              +(col-1)  ; if((col-1)<0)     link(3)=0
@@ -240,7 +248,7 @@ contains
              link(4)= (row-1)*Nside+1          + col     ; if((row-1)<0)     link(4)=0
           endif
           do jj=1,4
-             if(link(jj)>0)H0(i,link(jj))=ts
+             if(link(jj)>0)H0(i,link(jj))=-ts !! ts e' positivo [controllare che sia tutto ok] 
           enddo
        enddo
     enddo
@@ -338,7 +346,42 @@ contains
   !******************************************************************
   !******************************************************************
 
+  function dv_reshuffled(m_in) result(m_out)
+    integer                               :: i
+    real(8), dimension(Ns)           :: m_in
+    real(8), dimension(Nindip)       :: m_out
+    do i=1,Nindip
+       m_out(i)=m_in(indipsites(i))
+    enddo
+  end function dv_reshuffled
 
+  function zv_reshuffled(m_in) result(m_out)
+    integer                               :: i
+    complex(8), dimension(Ns)           :: m_in
+    complex(8), dimension(Nindip)       :: m_out
+    do i=1,Nindip
+       m_out(i)=m_in(indipsites(i))
+    enddo
+  end function zv_reshuffled
+
+  function dm_reshuffled(m_in) result(m_out)
+    integer                               :: i
+    real(8), dimension(Ns,L)           :: m_in
+    real(8), dimension(Nindip,L)       :: m_out
+    do i=1,Nindip
+       m_out(i,:)=m_in(indipsites(i),:)
+    enddo
+  end function dm_reshuffled
+
+
+  function zm_reshuffled(m_in) result(m_out)
+    integer                               :: i
+    complex(8), dimension(Ns,L)           :: m_in
+    complex(8), dimension(Nindip,L)       :: m_out
+    do i=1,Nindip
+       m_out(i,:)=m_in(indipsites(i),:)
+    enddo
+  end function zm_reshuffled
 
 
 end module RDMFT_VARS_GLOBAL

@@ -32,9 +32,15 @@
   allocate(icol(Ns),irow(Ns))
   !definisco dei nuovi boundaries per il mapping da i a isite,jsite
   !NB Nside e' sempre dispari nel programma
-  allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
+  if(symmflag) then
+   allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
+  else
+   allocate(ij2site(1:Nside,1:Nside))
+  endif
+  
   allocate(nii(Ns))
   allocate(dii(Ns))
+  allocate(gap_ii(Ns))
 
 
   if(mpiID==0)write(*,"(A,I9)")"System size =",Ns
@@ -49,10 +55,14 @@
 
   !BUILD THE LATTICE HAMILTONIAN:
   !=====================================================================
-  call get_tb_hamiltonian(centered=.true.)
+! call get_tb_hamiltonian(centered=.true.)
+! call get_tb_hamiltonian(centered=.false.)
+  call get_tb_hamiltonian(symmflag) 
 
+! dentro H0 non cambia nulla perche' e' tutto in termini dell'indice di stato 
+! che e' indipendente dal sistema di coordinate
 
-  !REDUCE THE PROBLEM BY TAKING INTO ACCOUTN TRAP SYMMETRIES:
+  !REDUCE THE PROBLEM BY TAKING INTO ACCOUNT TRAP SYMMETRIES:
   !=====================================================================
   if (symmflag) then
      Nindip = (Nside**2+4*Nside+3)/8
@@ -67,22 +77,18 @@
   if (N_wanted==0) then 
      densfixed=.false.
      if (mpiID==0) then
+        write(*,*)"======================================================" 
         write(*,*)"Working at fixed (global) chemical potential"
+        write(*,*)""
      endif
   else
      densfixed=.true.
+     !deltan=1.0d0                    ! to be read from input ?
      if (mpiID==0) then 
-<<<<<<< HEAD
-        write(*,"(A,I6)")"Working at fixed total particle number         =",N_wanted
+        write(*,"(A,I6)")"Working at fixed total particle number            =",N_wanted
         write(*,"(A,F12.9)")"Required tolerance over the number of particles=",N_tol
         write(*,"(A,F12.9)")"Starting value for the trap compressibility    =",chitrap
         write(*,"(A,F12.9)")"Initial step in mu                             =",ndelta
-=======
-        write(*,"(A,I)")"Working at fixed total particle number",N_wanted
-        write(*,"(A,F12.9)")"Required tolerance over the number of particles",N_tol
-        write(*,"(A,F12.9)")"Starting value for the trap compressibility",chitrap
-        write(*,"(A,F12.9)")"Initial step in mu",ndelta!deltan
->>>>>>> devel
      endif
   endif
 
