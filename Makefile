@@ -1,15 +1,15 @@
-EXE	=ahm_matsubara_disorder_phase
-DIR	=drivers/ahm_matsubara
-DIREXE	=$(HOME)/.bin
-FC	=mpif90
+#=========================================================================
+include lib.mk
+#=========================================================================
+FC=$(SFMPI)/mpif90
+EXE   =ahm_matsubara_disorder
+#EXE   =ahm_matsubara_disorder_phase
+DIR   =drivers/ahm_matsubara
+DIREXE=$(HOME)/.bin
 
-#########################################################################
-include $(SFDIR)/etc/lib.mk
-include $(SFDIR)/etc/libdmft.mk
-#########################################################################
-#STD+=-static
-#OPT+=-static
-#DEB+=-static
+STD+=-static
+OPT+=-static
+DEB+=-static
 
 OBJS=RDMFT_VARS_GLOBAL.o
 OBJS_DEB=RDMFT_VARS_GLOBAL_DEB.o
@@ -62,5 +62,5 @@ clean:
 
 
 #########################################################################
-include $(SFDIR)/etc/version.mk
+include version.mk
 #########################################################################

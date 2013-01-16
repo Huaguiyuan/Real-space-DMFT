@@ -6,7 +6,7 @@
 !###############################################################
 module RDMFT_VARS_GLOBAL
   USE COMMON_VARS
-  USE CHRONOBAR, ONLY:start_timer,stop_timer,eta
+  USE TIMER, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
   USE MATRIX !,    ONLY:mat_inversion_sym,mat_inversion_her,mat_inversion
   USE RANDOM,    ONLY:nrand,init_random_number
@@ -23,7 +23,7 @@ module RDMFT_VARS_GLOBAL
 
   !Lattice size:
   !=========================================================
-  integer   :: Nside,Ns,Nindip
+  integer   :: Nside,Ns,Nindip,iloop
 
   !Frequency and time arrays:
   !=========================================================
@@ -103,6 +103,7 @@ contains
     character(len=*) :: inputFILE
     integer          :: i
     logical          :: control
+    character(len=256),allocatable :: help_buffer(:)
     !local variables: default values
     Wdis            = 0.5d0
     Nside           = 10

@@ -114,10 +114,13 @@ contains
        do is=1,Ns
           Gloc(is,is)      =  xi*wm(i)+xmu-sigma(1,is,i)-erandom(is)
           Gloc(Ns+is,Ns+is)= -conjg(Gloc(is,is))
-          Gloc(is,Ns+is)   = -Sigma(2,is,i)
-          Gloc(Ns+is,is)   = -conjg(Sigma(2,is,i))
+          !Exchanging the two off-diagonal components apparently solves the problem 
+          !of having random phases. 
+          !BUT WHY?? IT SEEMS WRONG TO ME... IS THERE SOMETHING BAD IN THE INVERSION ROUTINE?
+          Gloc(is,Ns+is)   = conjg(Sigma(2,is,i))!Sigma(2,is,i)
+          Gloc(Ns+is,is)   = (Sigma(2,is,i))!conjg(Sigma(2,is,i))
        enddo
-       call mat_inversion(Gloc)!,2*Ns)
+       call matrix_inverse(Gloc)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)
@@ -209,11 +212,6 @@ contains
     call fftgf_iw2tau(calG(1,:),fg0t(0:),beta)
     call fftff_iw2tau(calG(2,:),ff0t(0:),beta)
     n0=-fg0t(L) ; delta0= -u*ff0t(L)
-
-    ! if(mpiID==0)then
-    !    call splot("calG_iw.ipt",wm,calG(1,:),append=TT)
-    !    call splot("calF_iw.ipt",wm,calG(2,:),append=TT)
-    ! endif
 
     sc_mod=abs(delta)
     sc0_mod=abs(delta0)
