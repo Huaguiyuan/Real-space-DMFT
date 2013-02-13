@@ -1,14 +1,10 @@
 #=========================================================================
-include lib.mk
+include sfmake.inc
 #=========================================================================
 FC=$(SFMPI)/mpif90
-EXE   =ahm_matsubara_trap
-DIR   =drivers/ahm_matsubara
 DIREXE=$(HOME)/.bin
-
-# STD+=-static
-# OPT+=-static
-# DEB+=-static
+EXE=ahm_matsubara_trap
+DIR=drivers/ahm_matsubara
 
 .SUFFIXES: .f90 
 OBJS = SOLVER_VARS_GLOBAL.o IPT_SC_MATS.o  IPT_SC_SOPT.o IPT_MATS.o IPT_SOPT.o  SOLVER_INTERFACE.o RDMFT_VARS_GLOBAL.o
@@ -47,9 +43,6 @@ debug: 	version $(OBJS)
 	@echo ""
 	@echo "created" $(DIREXE)/$(EXE)
 
-.f90.o:	
-	$(FC) $(FLAG) -c $< $(SFMODS) 
-
 
 pade: 	version $(OBJS)
 	@echo " ........... compile: rdmft_pade ........... "
@@ -65,11 +58,14 @@ data: 	version $(OBJS)
 	@echo ""
 	@echo "created" $(DIREXE)/get_data_$(EXE)
 
+
+.f90.o:	
+	$(FC) $(FLAG) -c $< $(SFMODS) 
+
+
 clean: 
 	@echo 'removing *.mod *.o *~'
 	@rm -fv *.mod *.o *~ revision.inc
 
-
-#########################################################################
-include version.mk
-#########################################################################
+version:
+	@echo $(VER)
