@@ -1,6 +1,5 @@
 #=========================================================================
-#include sfmake.inc
-include lib.mk
+include sfmake.inc
 #=========================================================================
 FC=$(SFMPI)/mpif90
 DIREXE=$(HOME)/.bin
@@ -69,6 +68,5 @@ clean:
 	@echo 'removing *.mod *.o *~'
 	@rm -fv *.mod *.o *~ revision.inc
 
-#version:
-#	@echo $(VER)
-include version.mk
+version:
+	@echo $(VER)
