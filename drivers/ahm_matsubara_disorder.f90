@@ -16,7 +16,7 @@ program ahm_matsubara_disorder
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
   logical                                 :: converged,converged1,converged2
   real(8)                                 :: r
-  integer                                 :: i,is,Lerr
+  integer                                 :: i,is
 
   !GLOBAL INITIALIZATION:
   !===============================================================
@@ -28,9 +28,7 @@ program ahm_matsubara_disorder
   allocate(wm(L),tau(0:L))
   wm(:)  = pi/beta*real(2*arange(1,L)-1,8)
   tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
-  Lerr=min(1024,L)
 
-  write(*,"(A,I9,A)")"Using ",L," frequencies"
   allocate(fg(2,Ns,L))
   allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
@@ -52,22 +50,26 @@ program ahm_matsubara_disorder
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
      call solve_sc_impurity_mpi()
 
-     !converged=check_convergence_local(sigma(1,:,1:Lerr)+sigma(2,:,1:Lerr),eps_error,Nsuccess,nloop,id=0)
-     converged = check_convergence_scalar(dii,eps_error,Nsuccess,nloop,id=0)
      ! !##ACTHUNG!!
-     ! converged1=check_convergence_local(fg(1,:,1:Lerr),eps_error,Nsuccess,nloop,id=0,index=1,total=2)
-     ! converged2=check_convergence_local(fg(2,:,1:Lerr),eps_error,Nsuccess,nloop,id=0,index=2,total=2)
-     ! converged=converged1*converged2
+     converged = check_convergence_scalar(dii,eps_error,Nsuccess,nloop,&
+          id=0,file=reg(name_dir)//"/error.err")
 
      if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
      call end_loop()
   enddo
-  if(mpiID==0)call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
+
+  deallocate(fg,fg0,sigma,sigma_tmp,nii_tmp,dii_tmp)
+
+  if(mpiID==0) then 
+     open(10,file="used.inputRDMFT.in")
+     write(10,nml=disorder)
+     close(10)
+  endif
+
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   call MPI_FINALIZE(mpiERR)
-
 
 
 contains
@@ -86,8 +88,8 @@ contains
        check=check1.AND.check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma_iw.data",sigma(1,1:Ns,1:L),wm)
-          call sread("LSelf_iw.data",sigma(2,1:Ns,1:L),wm)
+          call sread("LSigma_iw.data",wm,sigma(1,1:Ns,1:L))
+          call sread("LSelf_iw.data",wm,sigma(2,1:Ns,1:L))
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -115,7 +117,7 @@ contains
           Gloc(is,is)      =  xi*wm(i)-sigma(1,is,i)       -erandom(is)+xmu
           Gloc(Ns+is,Ns+is)=  xi*wm(i)+conjg(sigma(1,is,i))+erandom(is)-xmu !-conjg(Gloc(is,is))
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,i)
+          Gloc(Ns+is,is)   = -sigma(2,is,i)!sigma(2,is,L+1-i)!this should be a simmetry in Matsubara!
        enddo
        call matrix_inverse_sym(Gloc)
        forall(is=1:Ns)
@@ -139,32 +141,24 @@ contains
 
   subroutine solve_sc_impurity_mpi()
     integer :: is,i
-    logical :: disorder
-    disorder=.false. ; if(Wdis/=0.d0)disorder=.true.
     call msg("Solve impurity:")
-    disorder=.true.
-    if(disorder)then
-       call start_timer
-       sigma_tmp=zero
-       nii_tmp  =zero
-       dii_tmp  =zero
-       do is=1+mpiID,Ns,mpiSIZE
-          call solve_per_site(is)
-          call eta(is,Ns)
-       enddo
-       call stop_timer
-       call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-       call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
-       !
-       call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-       call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
-       !
-       call MPI_REDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-       call MPI_BCAST(dii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
-    else
-       call solve_per_site(is=1)
-       forall(is=1:Ns)sigma(:,is,:)=sigma_tmp(:,1,:)
-    end if
+    call start_timer
+    sigma_tmp=zero
+    nii_tmp  =zero
+    dii_tmp  =zero
+    do is=1+mpiID,Ns,mpiSIZE
+       call solve_per_site(is)
+       call eta(is,Ns)
+    enddo
+    call stop_timer
+    call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+    call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+    !
+    call MPI_REDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+    call MPI_BCAST(nii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
+    !
+    call MPI_REDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
+    call MPI_BCAST(dii,Ns,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine solve_sc_impurity_mpi
 
 
@@ -223,8 +217,10 @@ contains
 
   subroutine print_sc_out(converged)
     integer                   :: i,j,is,row,col
-    real(8)                   :: nimp,delta
+    real(8)                   :: nimp,delta,ccdw
     real(8),dimension(Ns)     :: cdwii,rii,sii,zii
+    real(8),dimension(Ns,Ns)  :: dij,nij,cij
+    real(8),dimension(Nside)  :: grid_x,grid_y
     real(8)                   :: mean,sdev,var,skew,kurt
     real(8),dimension(2,Ns)   :: data_covariance
     real(8),dimension(2,2)    :: covariance_nd
@@ -240,31 +236,35 @@ contains
 
        nimp = sum(nii)/dble(Ns)
        delta= sum(dii)/dble(Ns)
+       ccdw = 0.d0
+       do is=1,Ns
+          row=irow(is)
+          col=icol(is)
+          ccdw = ccdw + (-1.d0)**(row+col)*(nii(is)-1.d0)
+       enddo
        print*,"nimp  =",nimp
        print*,"delta =",delta
-       call splot(trim(adjustl(trim(name_dir)))//"/nVSiloop.data",iloop,nimp,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/deltaVSiloop.data",iloop,delta,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/nVSisite.data",nii)
-       call splot(trim(adjustl(trim(name_dir)))//"/deltaVSisite.data",dii)
+       print*,"ccdw  =",ccdw
+       call splot(reg(name_dir)//"/nVSiloop.data",iloop,nimp,append=.true.)
+       call splot(reg(name_dir)//"/deltaVSiloop.data",iloop,delta,append=.true.)
+       call splot(reg(name_dir)//"/ccdwVSiloop.data",iloop,ccdw,append=.true.)
+       call splot(reg(name_dir)//"/nVSisite.data",nii)
+       call splot(reg(name_dir)//"/deltaVSisite.data",dii)
+       !
+       call splot(reg(name_dir)//"/LSigma_iw.data",wm(1:L),sigma(1,1:Ns,1:L))
+       call splot(reg(name_dir)//"/LSelf_iw.data",wm(1:L),sigma(2,1:Ns,1:L))
+       !
 
-       if(printf)then
-          call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigma(1,1:Ns,1:L),wm(1:L))
-          call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.data",sigma(2,1:Ns,1:L),wm(1:L))
-       endif
-
+       !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
-          if(.not.printf)then
-             call splot(trim(adjustl(trim(name_dir)))//"/LSigma_iw.data",sigma(1,1:Ns,1:L),wm(1:L))
-             call splot(trim(adjustl(trim(name_dir)))//"/LSelf_iw.data",sigma(2,1:Ns,1:L),wm(1:L))
-          endif
-          call splot(trim(adjustl(trim(name_dir)))//"/LG_iw.data",fg(1,1:Ns,1:L),wm(1:L))
-          call splot(trim(adjustl(trim(name_dir)))//"/LF_iw.data",fg(2,1:Ns,1:L),wm(1:L))
+          call splot(reg(name_dir)//"/LG_iw.data",wm(1:L),fg(1,1:Ns,1:L))
+          call splot(reg(name_dir)//"/LF_iw.data",wm(1:L),fg(2,1:Ns,1:L))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Ns
              row=irow(is)
              col=icol(is)
-             cdwii(is) = (-1.d0)**(row+col)*nii(is)
+             cdwii(is) = (-1.d0)**(row+col)*(nii(is)-1.d0)
              sii(is)   = dimag(sigma(1,is,1))-&
                   wm(1)*(dimag(sigma(1,is,2))-dimag(sigma(1,is,1)))/(wm(2)-wm(1))
              rii(is)   = dimag(fg(1,is,1))-&
@@ -274,54 +274,68 @@ contains
           rii=abs(rii)
           sii=abs(sii)
           zii=abs(zii)
-          call splot(trim(adjustl(trim(name_dir)))//"/cdwVSisite.data",cdwii)
-          call splot(trim(adjustl(trim(name_dir)))//"/rhoVSisite.data",rii)
-          call splot(trim(adjustl(trim(name_dir)))//"/sigmaVSisite.data",sii)
-          call splot(trim(adjustl(trim(name_dir)))//"/zetaVSisite.data",zii)
-          call splot(trim(adjustl(trim(name_dir)))//"/erandomVSisite.data",erandom)
+          do row=1,Nside
+             grid_x(row)=row
+             grid_y(row)=row
+             do col=1,Nside
+                i            = ij2site(row,col)
+                nij(row,col) = nii(i)
+                dij(row,col) = dii(i)
+             enddo
+          enddo
+
+
+          call splot(reg(name_dir)//"/cdwVSisite.data",cdwii)
+          call splot(reg(name_dir)//"/rhoVSisite.data",rii)
+          call splot(reg(name_dir)//"/sigmaVSisite.data",sii)
+          call splot(reg(name_dir)//"/zetaVSisite.data",zii)
+          call splot(reg(name_dir)//"/erandomVSisite.data",erandom)
+          call splot3d(reg(name_dir)//"/3d_nVSij.ipt",grid_x,grid_y,nij)
+          call splot3d(reg(name_dir)//"/3d_deltaVSij.ipt",grid_x,grid_y,dij)
+
 
           !Plot averaged local functions
-          afg    = sum(fg,dim=2)/dble(Ns)
-          asigma = sum(sigma,dim=2)/dble(Ns)
-          call splot(trim(adjustl(trim(name_dir)))//"/aSigma_iw.data",wm,asigma(1,:))
-          call splot(trim(adjustl(trim(name_dir)))//"/aSelf_iw.data",wm,asigma(2,:))
-          call splot(trim(adjustl(trim(name_dir)))//"/aG_iw.data",wm,afg(1,:))
-          call splot(trim(adjustl(trim(name_dir)))//"/aF_iw.data",wm,afg(2,:))
+          afg    = sum(fg,dim=2)/real(Ns,8)
+          asigma = sum(sigma,dim=2)/real(Ns,8)
+          call splot(reg(name_dir)//"/aSigma_iw.data",wm,asigma(1,:))
+          call splot(reg(name_dir)//"/aSelf_iw.data",wm,asigma(2,:))
+          call splot(reg(name_dir)//"/aG_iw.data",wm,afg(1,:))
+          call splot(reg(name_dir)//"/aF_iw.data",wm,afg(2,:))
 
 
           call get_moments(nii,mean,sdev,var,skew,kurt)
           data_mean(1)=mean
           data_sdev(1)=sdev
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.n.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.n.data",mean,sdev,var,skew,kurt)
           !
           call get_moments(dii,mean,sdev,var,skew,kurt)
           data_mean(2)=mean
           data_sdev(2)=sdev
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.delta.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.delta.data",mean,sdev,var,skew,kurt)
           !
           call get_moments(cdwii,mean,sdev,var,skew,kurt)
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.cdwn.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.cdwn.data",mean,sdev,var,skew,kurt)
           !
           call get_moments(zii,mean,sdev,var,skew,kurt)
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.zeta.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.zeta.data",mean,sdev,var,skew,kurt)
           !
           call get_moments(sii,mean,sdev,var,skew,kurt)
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.sigma.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.sigma.data",mean,sdev,var,skew,kurt)
           !
           call get_moments(rii,mean,sdev,var,skew,kurt)
-          call splot(trim(adjustl(trim(name_dir)))//"/statistics.rho.data",mean,sdev,var,skew,kurt)
+          call splot(reg(name_dir)//"/statistics.rho.data",mean,sdev,var,skew,kurt)
 
           data_covariance(1,:)=nii
           data_covariance(2,:)=dii
           covariance_nd = get_covariance(data_covariance,data_mean)
-          open(10,file=trim(adjustl(trim(name_dir)))//"/covariance_n.delta.data")
+          open(10,file=reg(name_dir)//"/covariance_n.delta.data")
           do i=1,2
              write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
           enddo
           close(10)
 
           forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
-          open(10,file=trim(adjustl(trim(name_dir)))//"/correlation_n.delta.data")
+          open(10,file=reg(name_dir)//"/correlation_n.delta.data")
           do i=1,2
              write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
           enddo
@@ -355,7 +369,7 @@ contains
        else
           nindex=0
        endif
-       if(nindex1+nindex==0)then !avoid loop forth and back
+       if(nindex1+nindex==0.AND.nindex/=0)then !avoid loop forth and back
           ndelta=real(ndelta1/2.d0,8) !decreasing the step
        else
           ndelta=ndelta1
@@ -365,7 +379,7 @@ contains
        write(*,"(A,f15.12,A,f15.12)")"Density Error:",abs(naverage-nread),'/',nerror
        print*,""
        if(abs(naverage-nread)>nerror)convergence=.false.
-       call splot(trim(adjustl(trim(name_dir)))//"/muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
+       call splot(reg(name_dir)//"/muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
     endif
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu

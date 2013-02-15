@@ -15,7 +15,7 @@ module IPT_MATS
   real(8)            :: n,n0,xmu0
   public             :: solve_mpt_matsubara
   public             :: solve_ipt_matsubara
-
+  save                  fg0,sigma
 contains
 
   !+-------------------------------------------------------------------+

@@ -1,8 +1,39 @@
 !###############################################################
-!     PROGRAM  : VARS_GLOBAL
-!     TYPE     : Module
-!     PURPOSE  : Contains global variables
-!     AUTHORS  : Adriano Amaricci
+! PROGRAM  : SOLVER_VARS_GLOBAL
+! PURPOSE  : Contains global variables
+! AUTHORS  : Adriano Amaricci
+! DESCRIPTION
+! provide access to a set of solvers for the dmft
+! now it only includes IPT solvers:
+! OPTIONS
+! u=[2]      -- interaction
+! beta=[100] -- inverse temperature
+! xmu=[0]    -- chemical potential
+! nloop=[10] -- max number of iterations
+! L=[2048]   -- number of frequencies
+! printf=[T] -- print flag
+! ts=[0.5]   -- n.n. hopping parameter
+! tsp=[0]    -- n.n.n. hopping parameter
+! nx=[20]    -- number of points in energy/k-grid
+! wmax=[5]   -- max frequency on real axis
+! eps=[0.01] -- broadening parameter
+! deltasc=[0.1]     -- breaking symmetry parameter
+! nread=[0.0]       -- required density look for mu
+! nerror=[1.d-4]    -- error treshold for mu-loop
+! ndelta=[0.1]      -- mu-step in mu-loop for fixed density
+! eps_error=[1.D-4] -- error treshold
+! success=[2]       -- number of converged events
+! ROUTINES
+! normal:
+! solve_ipt_matsubara(fg0_)      result(sigma_) dim(L)
+! solve_mpt_matsubara(fg0_,n_,n0_,xmu0_) result(sigma_) dim(L)
+! solve_ipt_sopt(fg0_,wr_)       result(sigma_) dim(-L:L)
+! solve_mpt_sopt(fg0_,wr_,n_,n0_,xmu0_)  result(sigma_) dim(-L:L)
+! supercond:
+! solve_ipt_sc_sopt(fg0_,wr_,delta_)  result(sigma_) dim(2,-L:L)
+! solve_ipt_sc_matsubara(fg0_,delta_) result(sigma_) dim(2,L)
+! solve_mpt_sc_sopt(fg0_,wr_,n_,n0_,delta_,delta0_)  result(sigma_) dim(2,-L:L)
+! solve_mpt_sc_matsubara(fg0_,n_,n0_,delta_,delta0_) result(sigma_) dim(2,L)
 !###############################################################
 module SOLVER_VARS_GLOBAL
   !LIBRARY: put here all the LIBS in common
@@ -11,6 +42,7 @@ module SOLVER_VARS_GLOBAL
   USE GREENFUNX
   USE FFTGF
   USE INTEGRATE
+  USE FUNCTIONS
   USE TOOLS
   implicit none
 
@@ -35,7 +67,6 @@ module SOLVER_VARS_GLOBAL
   integer :: Nsuccess
   real(8) :: weight
   real(8) :: deltasc
-  real(8) :: nread,nerror,ndelta
 
   !Namelists:
   !=========================================================
@@ -54,8 +85,7 @@ module SOLVER_VARS_GLOBAL
        weight,   &
        eps_error,&
        Nsuccess, &
-       deltasc,&
-       nread,nerror,ndelta
+       deltasc   
 
 
 contains
@@ -68,8 +98,7 @@ contains
   subroutine read_input(inputFILE)
     character(len=*) :: inputFILE
     integer :: i
-    logical :: back,control
-    character(len=256),allocatable,dimension(:) :: help_buffer
+    logical :: control
     !variables: default values
     U     = 2.d0
     beta  = 100.d0
@@ -91,58 +120,6 @@ contains
     eps_error= 1.d-4
     Nsuccess = 2
     deltasc  = 0.1d0
-    nread=0.d0
-    nerror=1.d-4
-    ndelta=0.1d0
-
-
-    allocate(help_buffer(39))
-    help_buffer=([character(len=512)::&
-         'NAME',&
-         '  library:dmft_ipt',&
-         '  ',&
-         'DESCRIPTION',&
-         '  provide access to a set of solvers for the dmft based on IPT',&
-         '  ',&
-         'OPTIONS',&
-         '  u=[2]      -- interaction',&
-         '  beta=[100] -- inverse temperature',&
-         '  xmu=[0]    -- chemical potential',&
-         '  nloop=[10] -- max number of iterations',&
-         '  L=[2048]   -- number of frequencies',&
-         '  printf=[T] -- print flag',&
-         '  ts=[0.5]   -- n.n. hopping parameter',&
-         '  tsp=[0]    -- n.n.n. hopping parameter',&
-         '  nx=[20]    -- number of points in energy/k-grid',&
-         '  wmax=[5]   -- max frequency on real axis',&
-         '  eps=[0.01] -- broadening parameter',&
-         '  deltasc=[0.1]     -- breaking symmetry parameter',&
-         '  nread=[0.0]       -- required density look for mu',&
-         '  nerror=[1.d-4]    -- error treshold for mu-loop',&
-         '  ndelta=[0.1]      -- mu-step in mu-loop for fixed density',&
-         '  eps_error=[1.D-4] -- error treshold',&
-         '  success=[2]       -- number of converged events',&
-         '  ',&
-         'ROUTINES',&
-         '  normal:',&
-         '  solve_ipt_keldysh(fg0_,wr_,t_) result(sigma_) dim(-L:L) ',&
-         '  solve_ipt_matsubara(fg0_)      result(sigma_) dim(L)',&
-         '  solve_ipt_sopt(fg0_,wr_)       result(sigma_) dim(-L:L)',&
-         '  solve_ipt_zeroT(fg0_,dw_,dt_)  result(sigma_) dim(-L:L)',&
-         '  solve_mpt_sopt(fg0_,wr_,n_,n0_,xmu0_)  result(sigma_) dim(-L:L)',&
-         '  solve_mpt_matsubara(fg0_,n_,n0_,xmu0_) result(sigma_) dim(L)',&
-         '  ',&
-         '  supercond:',&
-         '  solve_ipt_sc_sopt(fg0_,wr_,delta_)  result(sigma_) dim(2,-L:L)',&
-         '  solve_ipt_sc_matsubara(fg0_,delta_) result(sigma_) dim(2,L)',&
-         '  solve_mpt_sc_sopt(fg0_,wr_,n_,n0_,delta_,delta0_)  result(sigma_) dim(2,-L:L)',&
-         '  solve_mpt_sc_matsubara(fg0_,n_,n0_,delta_,delta0_) result(sigma_) dim(2,L)',&
-         ' ',&
-         '  '])
-
-    call parse_cmd_help(help_buffer,status=back)
-    deallocate(help_buffer) ; 
-    if(back)return
 
     inquire(file=adjustl(trim(inputFILE)),exist=control)
     if(control)then
@@ -174,9 +151,6 @@ contains
     call parse_cmd_variable(eps_error,"EPS_ERROR")
     call parse_cmd_variable(nsuccess,"NSUCCESS")
     call parse_cmd_variable(deltasc,"DELTASC")
-    call parse_cmd_variable(nread,"NREAD")
-    call parse_cmd_variable(nerror,"NERROR")
-    call parse_cmd_variable(ndelta,"NDELTA")
 
     if(mpiID==0)then
        write(*,nml=variables)

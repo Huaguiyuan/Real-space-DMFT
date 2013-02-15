@@ -90,11 +90,9 @@ program ahm_real_trap
   deallocate(fg,fg0,fg_0,sigma,sigma_tmp,nii_tmp,dii_tmp,gap_ii_tmp)
 
   if(mpiID==0) then 
-     call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
      open(10,file="used.inputRDMFT.in")
      write(10,nml=disorder)
      close(10)
-     call system("cp -vf used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
   endif
 
 
@@ -368,69 +366,85 @@ contains
        enddo
 
        !Special points
-       corner=ij2site(Nside/2,Nside/2)
-       center=ij2site(0,0)
-       border=ij2site(0,Nside/2)
+       if(symmflag)then
+          corner=ij2site(Nside/2,Nside/2)
+          center=ij2site(0,0)
+          border=ij2site(0,Nside/2)
+       else 
+          corner=ij2site(Nside,Nside)
+          center=ij2site(Nside/2+1,Nside/2+1)
+          border=ij2site(0,Nside/2)
+       endif
 
        !Average and total observables:
-       n_av     = n_tot/dble(occupied)
-       delta_av = delta_tot/dble(occupied)
-       n_corner = nii(corner)
-       n_border = nii(border)
-       n_min    = minval(nii)
-       e_corner = a0trap+etrap(corner)
-       call splot(trim(adjustl(trim(name_dir)))//"/ntotVSiloop.ipt",iloop,n_tot,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta_av,append=TT)
-       call system("rm -fv *site.ipt *.ipt.gz")   ! se append=false non serve ...
+       n_av    = n_tot/dble(occupied)
+       delta_av= delta_tot/dble(occupied)
+       n_corner= nii(corner)
+       n_border= nii(border)
+       n_min   = minval(nii)
+       e_corner= a0trap+etrap(corner)
+
+       call splot("ntotVSiloop.ipt",iloop,n_tot)!,append=TT)
+       call splot("davVSiloop.ipt",iloop,delta_av)!,append=TT)
 
        !Print some information to user:
        print*,"========================================"
        print*,"Average density =",n_av
-       print*,"Delta_av =",delta_av
+       print*,"Delta_av        =",delta_av
        print*,"Minimum density =",n_min
-       print*,"Residual density at the border=",n_border 
-       if (n_border.gt.density_threshold) print*,"WARNING: MAYBE TOUCHING THE TRAP BOUNDARIES"
+       print*,"Border density  =",n_border 
+       if(n_border > density_threshold) print*,"WARNING: MAYBE TOUCHING THE TRAP BOUNDARIES"
        print*,"========================================"
        print*,"Residual density at the corner=",n_corner
-       print*,"Trap energy at the corner =",e_corner
-       if (n_corner.gt.n_min+density_threshold) print*,"ACHTUNG: NON-MONOTONIC DENSITY PROFILE"
+       print*,"Trap energy at the corner     =",e_corner
+       if (n_corner > n_min+density_threshold) print*,"ACHTUNG: NON-MONOTONIC DENSITY PROFILE"
        print*,"========================================"       
 
 
-
-       !Evaluate 3D distribution of density and order-parameter:
-       do row=-Nside/2,Nside/2
-          do col=-Nside/2,Nside/2
-             i            = ij2site(row,col)
-             nij(row,col) = nii(i)
-             dij(row,col) = dii(i)
+       !       Evaluate 3D distribution of density and order-parameter:
+       if (symmflag)then
+          do row=-Nside/2,Nside/2
+             do col=-Nside/2,Nside/2
+                i            = ij2site(row,col)
+                nij(row,col) = nii(i)
+                dij(row,col) = dii(i)
+             enddo
           enddo
-       enddo
+       else 
+          do row=1,Nside
+             do col=1,Nside
+                i            = ij2site(row,col)
+                nij(row,col) = nii(i)
+                dij(row,col) = dii(i)
+             enddo
+          enddo
+       endif
+
        call splot("3d_nVSij.ipt",grid_x,grid_y,nij)
        call splot("3d_deltaVSij.ipt",grid_x,grid_y,dij)
 
 
        !STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
-       call splot(trim(adjustl(trim(name_dir)))//"/LSigma_realw.ipt",sigma(1,1:Ns,1:L),wr(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LSelf_realw.ipt",sigma(2,1:Ns,1:L),wr(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LG_realw.ipt",fg(1,1:Ns,1:L),wr(1:L))
-       call splot(trim(adjustl(trim(name_dir)))//"/LF_realw.ipt",fg(2,1:Ns,1:L),wr(1:L))
+       call splot("LSigma.ipt",sigma(1,1:Ns,1:L),wr)
+       call splot("LSelf.ipt",sigma(2,1:Ns,1:L),wr)
+       call splot("LG.ipt",fg(1,1:Ns,1:L),wr)
+       call splot("LF.ipt",fg(2,1:Ns,1:L),wr)
 
 
        !plotting selected green-function and self-energies for quick
        !data processing and debugging
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_realw_center.ipt",wr,fg(1,center,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_realw_center.ipt",wr,fg(2,center,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_realw_center.ipt",wr,sigma(1,center,1:L),append=TT) 
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_realw_center.ipt",wr,sigma(2,center,1:L),append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_realw_border.ipt",wr,fg(1,border,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_realw_border.ipt",wr,fg(2,border,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_realw_border.ipt",wr,sigma(1,border,1:L),append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_realw_border.ipt",wr,sigma(2,border,1:L),append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_realw_corner.ipt",wr,fg(1,corner,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_realw_corner.ipt",wr,fg(2,corner,1:L),append=FF)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_realw_corner.ipt",wr,sigma(1,corner,1:L),append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_realw_corner.ipt",wr,sigma(2,corner,1:L),append=TT)
+       call splot("Gloc_iw_center.ipt",wr,fg(1,center,1:L),append=printf)
+       call splot("Floc_iw_center.ipt",wr,fg(2,center,1:L),append=printf)
+       call splot("Sigma_iw_center.ipt",wr,sigma(1,center,1:L),append=printf)
+       call splot("Self_iw_center.ipt",wr,sigma(2,center,1:L),append=printf)
+       call splot("Gloc_iw_border.ipt",wr,fg(1,border,1:L),append=printf)
+       call splot("Floc_iw_border.ipt",wr,fg(2,border,1:L),append=printf)
+       call splot("Sigma_iw_border.ipt",wr,sigma(1,border,1:L),append=printf)
+       call splot("Self_iw_border.ipt",wr,sigma(2,border,1:L),append=printf)
+       call splot("Gloc_iw_corner.ipt",wr,fg(1,corner,1:L),append=printf)
+       call splot("Floc_iw_corner.ipt",wr,fg(2,corner,1:L),append=printf)
+       call splot("Sigma_iw_corner.ipt",wr,sigma(1,corner,1:L),append=printf)
+       call splot("Self_iw_corner.ipt",wr,sigma(2,corner,1:L),append=printf)
 
 
 
@@ -454,15 +468,24 @@ contains
 
 
 
-
           !Get the trap shape and print converged 2d/3d-plots
-          do row=-Nside/2,Nside/2
-             do col=-Nside/2,Nside/2
-                i            = ij2site(row,col)
-                eij(row,col) = etrap(i)
-                gap_ij(row,col) = gap_ii(i)
+          if(symmflag)then
+             do row=-Nside/2,Nside/2
+                do col=-Nside/2,Nside/2
+                   i            = ij2site(row,col)
+                   eij(row,col) = etrap(i)
+                   gap_ij(row,col)=gap_ii(i)
+                enddo
              enddo
-          enddo
+          else 
+             do row=1,Nside
+                do col=1,Nside
+                   i            = ij2site(row,col)
+                   eij(row,col) = etrap(i)
+                   gap_ij(row,col)=gap_ii(i)
+                enddo
+             enddo
+          endif
 
           call splot(trim(adjustl(trim(name_dir)))//"/2d_nVSij.data",grid_y,nij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_deltaVSij.data",grid_y,dij(0,:))
@@ -474,24 +497,26 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/3d_etrapVSij.data",grid_x,grid_y,eij)
           call splot(trim(adjustl(trim(name_dir)))//"/3d_gapVSij.data",grid_x,grid_y,gap_ij)
 
-          call system("mv -vf used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
        endif
-
     end if
     return
   end subroutine print_sc_out
 
 
+
   !******************************************************************
   !******************************************************************
+
+
 
 
   subroutine search_mu(convergence)
     integer, save         ::nindex
     integer               ::nindex1
     real(8),save          ::muold,N_old
-    real(8)               :: ndelta1
+    real(8)               ::ndelta1
     logical,intent(inout) ::convergence
+
     if(mpiID==0)then
        nindex1=nindex  !! save old value of the increment sign
        ndelta1=ndelta
@@ -510,19 +535,15 @@ contains
           ndelta=ndelta1/2.d0
        endif
        a0trap=a0trap-chitrap*real(nindex,8)*ndelta  ! a0trap=-mu_tot
-
-       ! in this way chitrap is the inverse trap compressibility chitrap=dmu/d(N_tot)
-
-       print*,"=======================  DENSITY-LOOP   ========================="
-       write(*,"(A,f15.12,A,f15.12)")"A0TRAP=",a0trap," step =",ndelta
-       write(*,"(A,f15.12,A,f15.12)")"density error=",abs(n_tot-n_wanted)," vs",n_tol
+       !         in this way chitrap is the inverse trap compressibility chitrap=dmu/d(N_tot)
+       call msg("---Density loop---")
+       write(*,"(A,f15.12,1x,A,f15.12)")"a0trap       =",a0trap," step =",ndelta
+       write(*,"(A,f15.12,1x,A,f15.12)")"density error=",abs(n_tot-n_wanted),"/",n_tol
        if(abs(n_tot-n_wanted) > n_tol) then
-          print*,"********* density loop not yet converged ***********" 
           if (iloop < nloop) then
              convergence=.false.
           else
-             print*,"       FORCED DENSITY LOOP EXIT !!        "
-             print*,"CONSIDER INCREASING NLOOP OR CHANGE CHITRAP"
+             call warning("FORCED DENSITY LOOP EXIT!! not yet converged: increase +nloop or change +chitrap")!,stop=.false.)
              convergence=.true.
           endif
        else
@@ -720,8 +741,8 @@ contains
     i_minus =maxloc(dos_(1:L/2))
     gap_plus  = wr_(i_plus(1)+L/2)
     gap_minus =-wr_(i_minus(1))
-    print*,"gap_+ =", gap_plus
-    print*,"gap_ =" , gap_minus
+!    print*,"gap_+ =", gap_plus
+!    print*,"gap_ =" , gap_minus
     gap_=min(gap_plus,gap_minus)
   end subroutine get_gap
 

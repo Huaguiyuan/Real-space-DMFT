@@ -1,19 +1,43 @@
 !###############################################################
-!     PROGRAM  : VARS_GLOBAL
-!     TYPE     : Module
-!     PURPOSE  : Contains global variables
-!     AUTHORS  : Adriano Amaricci & Antonio Privitera
+! PROGRAM  : RDMFT_VARS_GLOBAL
+! TYPE     : Module
+! PURPOSE  : Contains global variables
+! AUTHORS  : Adriano Amaricci & Antonio Privitera
+! NAME
+!   xxx_disorder/trap  
+! DESCRIPTION
+!   This a layer interface to different codes solving the Real-space Dynamical Mean Field Theory.
+!   Each code must be implemented separetely, for convenience some driver routines are in drivers/ dir.
+!   The structure is very easy: a tight-binding hamiltonian is generated at first and the DMFT problem  
+!   is solved in the local wannier basis, solving the impurity problem at each lattice site. Simmetries 
+!   can be used to reduce the size of the problem. Lattice sites are related via self-consistency. 
+!   The code is MPI parallel.     
+! OPTIONS
+!  wdis=[0.5]    -- degree of local disorder.
+!  Nside=[10]    -- linear size of the cluster to be solved.
+!  a0trap=[0]    -- bottom of the trap. here kept separated from mu.
+!  v0trap=[0.1]  -- fix the parabolic shape of the trap.
+!  nread=[0.0]   -- density value for chemical potential search.
+!  ndelta=[0.1]  -- starting value for chemical potential shift.
+!  nerror=[1.d-4]-- max error in adjusting chemical potential. 
+!  symmflag=[T]  -- Enforce trap cubic symmetry in the xy-plane.
+!  n_wanted=[0]  -- Required number of particles in the trap. Fix to 0 (default) for mufixed
+!  n_tol=[0.1]   -- Tolerance over the total density
+!  chitrap=[0.1] -- Tentative value of the global trap compressibility
+!  pbcflag=[T]   -- periodic boundary conditions.
+!  idum=[1234567]-- initial seed for the random variable sample.	
 !###############################################################
 module RDMFT_VARS_GLOBAL
   !Scientific library
   USE COMMON_VARS
   USE TIMER, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
-  USE MATRIX !,    ONLY:mat_inversion_sym,mat_inversion_her,mat_inversion
+  USE MATRIX
   USE RANDOM,    ONLY:nrand,init_random_number
   USE STATISTICS
   USE INTEGRATE, ONLY:kronig
-  USE TOOLS,     ONLY:fermi,check_convergence
+  USE FUNCTIONS, ONLY:fermi
+  USE TOOLS,     ONLY:check_convergence
   !Impurity solver interface
   USE SOLVER_INTERFACE
   !parallel library
@@ -64,10 +88,11 @@ module RDMFT_VARS_GLOBAL
 
   !Other variables:
   !=========================================================
-  character(len=20)                  :: name_dir
-  logical                            :: pbcflag
-  logical                            :: symmflag
-  logical                            :: densfixed
+  character(len=20) :: name_dir
+  logical           :: pbcflag
+  logical           :: symmflag
+  logical           :: densfixed
+  real(8)           :: nread,nerror,ndelta
 
   !Random energies
   !=========================================================
@@ -78,10 +103,10 @@ module RDMFT_VARS_GLOBAL
      module procedure c_symmetrize,r_symmetrize
   end interface symmetrize
 
-   interface reshuffled
-       module procedure dv_reshuffled,zv_reshuffled,&
-                        dm_reshuffled,zm_reshuffled
-   end interface reshuffled
+  interface reshuffled
+     module procedure dv_reshuffled,zv_reshuffled,&
+          dm_reshuffled,zm_reshuffled
+  end interface reshuffled
 
   !Namelist:
   !=========================================================
@@ -111,7 +136,6 @@ contains
     character(len=*) :: inputFILE
     integer          :: i
     logical          :: control
-    character(len=256),allocatable :: help_buffer(:)
     !local variables: default values
     Wdis            = 0.5d0
     Nside           = 10
@@ -130,36 +154,6 @@ contains
 
     !SET SIZE THRESHOLD FOR FILE ZIPPING:
     store_size=1024
-
-    allocate(help_buffer(27))
-    help_buffer=([character(len=256)::&
-         'NAME',&
-         '  xxx_disorder/trap',&
-         '',&
-         'DESCRIPTION',&
-         '  This a layer interface to different codes solving the Real-space Dynamical Mean Field Theory.',&
-         '  Each code must be implemented separetely, for convenience some driver routines are in drivers/ dir.',&
-         '  The structure is very easy: an thight-binding hamiltonian is generated at fist and the DMFT problem  ',&
-         '  is solved in the local wannier basis, solving the impurity problem at each lattice site. Simmetries ',&
-         '  can be used to reduce the size of the problem. Lattice sites are related via self-consistency. ',&
-         '  The code is MPI parallel. ',&
-         '  ',&
-         'OPTIONS',&
-         ' wdis=[0.5]    -- degree of local disorder.',&
-         ' Nside=[10]    -- linear size of the cluster to be solved.',&
-         ' a0trap=[0]    -- bottom of the trap. here kept separated from mu.',&
-         ' v0trap=[0.1]  -- fix the parabolic shape of the trap.',&
-         ' nread=[0.0]   -- density value for chemical potential search.',&
-         ' ndelta=[0.1]  -- starting value for chemical potential shift.',&
-         ' nerror=[1.d-4]-- max error in adjusting chemical potential. ',&
-         ' symmflag=[T]  -- Enforce trap cubic symmetry in the xy-plane.',&
-         ' n_wanted=[0]  -- Required number of particles in the trap. Fix to 0 (default) for mufixed',&
-         ' n_tol=[0.1]   -- Tolerance over the total density',&
-         ' chitrap=[0.1] -- Tentative value of the global trap compressibility',&
-         ' pbcflag=[T]   -- periodic boundary conditions.',&
-         ' idum=[1234567]-- initial seed for the random variable sample.',&
-         '  '])
-    call parse_cmd_help(help_buffer)
 
     !Read input file (if any)
     inquire(file=adjustl(trim(inputFILE)),exist=control)
@@ -181,6 +175,7 @@ contains
     call parse_cmd_variable(Nside,"NSIDE")
     call parse_cmd_variable(nread,"NREAD")
     call parse_cmd_variable(nerror,"NERROR")
+    call parse_cmd_variable(ndelta,"NDELTA")
     call parse_cmd_variable(n_wanted,"NWANTED")
     call parse_cmd_variable(n_tol,"NTOL")
     call parse_cmd_variable(chitrap,"CHITRAP")
@@ -195,9 +190,6 @@ contains
        write(10,nml=disorder)
        close(10)
     endif
-
-
-
 
     call version(revision)
   end subroutine rdmft_read_input

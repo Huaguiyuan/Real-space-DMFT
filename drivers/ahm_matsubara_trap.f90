@@ -66,29 +66,30 @@ program ahm_matsubara_trap
         acheck(1:Ns)=nii
         acheck(Ns+1:2*Ns)=dii
      endif
-     converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,id=0,strict=.true.)
+
+     converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,&
+          id=0,file=reg(name_dir)//"error.err",strict=.true.)
+
      if (densfixed) call search_mu_trap(converged) !this is a better version of search_mu great for trap!
 
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
+
      call print_sc_out(converged)
      call end_loop()
   enddo
 
-
   deallocate(fg,fg0,sigma,sigma_tmp,nii_tmp,dii_tmp)
 
   if(mpiID==0) then 
-     call system("mv -vf *.err "//trim(adjustl(trim(name_dir)))//"/")
      open(10,file="used.inputRDMFT.in")
      write(10,nml=disorder)
      close(10)
-     call system("cp -vf used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
   endif
-
 
 
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   call MPI_FINALIZE(mpiERR)
+
 
 
 
@@ -123,8 +124,8 @@ contains
        check=check1.AND.check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma.ipt",sigma(1,1:Ns,1:L))
-          call sread("LSelf.ipt",sigma(2,1:Ns,1:L))
+          call sread("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
+          call sread("LSelf.ipt" ,wm,sigma(2,1:Ns,1:L))
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -279,34 +280,38 @@ contains
 
     if(mpiID==0)then
 
-
        !BUILD A GRID FOR  LATTICE PLOTS:                 
        if(.not.allocated(grid_x)) then 
           allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
           allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
           allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
           allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+
           do row=-Nside/2,Nside/2
              grid_x(row)=dble(row)
              grid_y(row)=dble(row)
           enddo
        endif
 
-
        !Evaluate the CDW order-parameter and threshold for occupation
        occupied=0 
-       C       =0.d0
+       C=0.d0
        do is=1,Ns
           cdw(is) = (nii(is)-1.d0)*((-1.d0)**abs(irow(is)+icol(is))) 
           C=C+cdw(is)
-          if(nii(is)>=density_threshold) occupied=occupied+1
+          if(nii(is).ge.density_threshold) occupied=occupied+1
        enddo
 
        !Special points
-       corner=ij2site(Nside/2,Nside/2)
-       center=ij2site(0,0)
-       border=ij2site(0,Nside/2)
-
+       if(symmflag)then
+          corner=ij2site(Nside/2,Nside/2)
+          center=ij2site(0,0)
+          border=ij2site(0,Nside/2)
+       else 
+          corner=ij2site(Nside,Nside)
+          center=ij2site(Nside/2+1,Nside/2+1)
+          border=ij2site(0,Nside/2)
+       endif
 
        !Average and total observables:
        n_av    = n_tot/dble(occupied)
@@ -315,9 +320,8 @@ contains
        n_border= nii(border)
        n_min   = minval(nii)
        e_corner= a0trap+etrap(corner)
-       call splot(trim(adjustl(trim(name_dir)))//"/ntotVSiloop.ipt",iloop,n_tot,append=TT)
-       call splot(trim(adjustl(trim(name_dir)))//"/davVSiloop.ipt",iloop,delta_av,append=TT)
-       call system("rm -fv *site.ipt *.ipt.gz")   ! se append=false non serve
+       call splot("ntotVSiloop.ipt",iloop,n_tot,append=.true.)
+       call splot("davVSiloop.ipt",iloop,delta_av,append=.true.)
 
        !Print some information to user:
        print*,"========================================"
@@ -326,44 +330,60 @@ contains
        print*,"Minimum density =",n_min
        print*,"Border density  =",n_border 
        if(n_border > density_threshold) print*,"WARNING: MAYBE TOUCHING THE TRAP BOUNDARIES"
+       print*,"========================================"
        print*,"Residual density at the corner=",n_corner
        print*,"Trap energy at the corner     =",e_corner
        if (n_corner > n_min+density_threshold) print*,"ACHTUNG: NON-MONOTONIC DENSITY PROFILE"
        print*,"========================================"       
 
 
-       !Evaluate 3D distribution of density and order-parameter:
-       do row=-Nside/2,Nside/2
-          do col=-Nside/2,Nside/2
-             i            = ij2site(row,col)
-             nij(row,col) = nii(i)
-             dij(row,col) = dii(i)
+       !       Evaluate 3D distribution of density and order-parameter:
+       if (symmflag)then
+          do row=-Nside/2,Nside/2
+             do col=-Nside/2,Nside/2
+                i            = ij2site(row,col)
+                nij(row,col) = nii(i)
+                dij(row,col) = dii(i)
+             enddo
           enddo
-       enddo
-       call splot("3d_nVSij.ipt",grid_x,grid_y,nij)
-       call splot("3d_deltaVSij.ipt",grid_x,grid_y,dij)
+       else 
+          do row=1,Nside
+             do col=1,Nside
+                i            = ij2site(row,col)
+                nij(row,col) = nii(i)
+                dij(row,col) = dii(i)
+             enddo
+          enddo
+       endif
 
 
-       !STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
-       call splot(trim(adjustl(trim(name_dir)))//"/LSigma.ipt",sigma(1,1:Ns,1:L),wm)
-       call splot(trim(adjustl(trim(name_dir)))//"/LSelf.ipt",sigma(2,1:Ns,1:L),wm)
-       call splot(trim(adjustl(trim(name_dir)))//"/LG.ipt",fg(1,1:Ns,1:L),wm)
-       call splot(trim(adjustl(trim(name_dir)))//"/LF.ipt",fg(2,1:Ns,1:L),wm)
+       call splot3d("3d_nVSij.ipt",grid_x,grid_y,nij)
+       call splot3d("3d_deltaVSij.ipt",grid_x,grid_y,dij)
+
+
+       !STORE GREEN's FUNCTIONS AND SELF-ENERGY
+       call splot("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
+       call splot("LSelf.ipt",wm,sigma(2,1:Ns,1:L))
+       call splot("LG.ipt",wm,fg(1,1:Ns,1:L))
+       call splot("LF.ipt",wm,fg(2,1:Ns,1:L))
+
 
        !plotting selected green-function and self-energies for quick
        !data processing and debugging
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_center.ipt",wm,fg(1,center,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_center.ipt",wm,fg(2,center,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_center.ipt",wm,sigma(1,center,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_center.ipt",wm,sigma(2,center,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_border.ipt",wm,fg(1,border,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_border.ipt",wm,fg(2,border,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_border.ipt",wm,sigma(1,border,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_border.ipt",wm,sigma(2,border,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Gloc_iw_corner.ipt",wm,fg(1,corner,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Floc_iw_corner.ipt",wm,fg(2,corner,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L),append=printf)
-       call splot(trim(adjustl(trim(name_dir)))//"/Self_iw_corner.ipt",wm,sigma(2,corner,1:L),append=printf)
+       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L))!,append=printf)
+       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L))!,append=printf)
+       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L))!,append=printf)
+       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L))!,append=printf)
+       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L))!,append=printf)
+       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L))!,append=printf)
+       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L))!,append=printf)
+       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L))!,append=printf)
+       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L))!,append=printf)
+       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L))!,append=printf)
+       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L))!,append=printf)
+       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L))!,append=printf)
+
+
 
 
        !IF CONVERGENCE IS ACHIEVED PRINT SHORT SUMMARY OF INFO and local observables:
@@ -383,26 +403,40 @@ contains
           print*,"**********************     END  SUMMARY        *************************"
 
 
+
+
           !Get the trap shape and print converged 2d/3d-plots
-          do row=-Nside/2,Nside/2
-             do col=-Nside/2,Nside/2
-                i            = ij2site(row,col)
-                eij(row,col) = etrap(i)
+          if(symmflag)then
+             do row=-Nside/2,Nside/2
+                do col=-Nside/2,Nside/2
+                   i            = ij2site(row,col)
+                   eij(row,col) = etrap(i)
+
+                enddo
              enddo
-          enddo
+          else 
+             do row=1,Nside
+                do col=1,Nside
+                   i            = ij2site(row,col)
+                   eij(row,col) = etrap(i)
+
+                enddo
+             enddo
+          endif
+
           call splot(trim(adjustl(trim(name_dir)))//"/2d_nVSij.data",grid_y,nij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_deltaVSij.data",grid_y,dij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_etrapVSij.data",grid_y,eij(0,:))
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_nVSij.data",grid_x,grid_y,nij)
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_deltaVSij.data",grid_x,grid_y,dij)
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_etrapVSij.data",grid_x,grid_y,eij)
-          call system("mv -vf used.*.in "//trim(adjustl(trim(name_dir)))//"/ ")
-       endif
 
+
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_nVSij.data",grid_x,grid_y,nij)
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_deltaVSij.data",grid_x,grid_y,dij)
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_etrapVSij.data",grid_x,grid_y,eij)
+
+       endif
     end if
     return
   end subroutine print_sc_out
-
 
 
 
@@ -448,7 +482,11 @@ contains
              call warning("FORCED DENSITY LOOP EXIT!! not yet converged: increase +nloop or change +chitrap")!,stop=.false.)
              convergence=.true.
           endif
+       else
+          print*,"*********     density-loop CONVERGED      ***********"
        endif
+       print*,"================================================================="
+
        call splot(trim(adjustl(trim(name_dir)))//"/a0trapVSiter.ipt",iloop,a0trap,abs(n_tot-n_wanted),append=.true.)
     endif
     call MPI_BCAST(a0trap,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)

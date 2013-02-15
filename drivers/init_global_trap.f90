@@ -5,6 +5,8 @@
   call MPI_COMM_SIZE(MPI_COMM_WORLD,mpiSIZE,mpiERR)
   write(*,"(A,I4,A,I4,A)")'Processor ',mpiID,' of ',mpiSIZE,' is alive'
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  flush(6)
+
 
   !READ INPUT FILES:
   !=====================================================================
@@ -18,7 +20,7 @@
      Nside=Nside-1
      if(mpiID==0)then 
         write(*,"(A)")bg_red("Nside has to be odd!")
-        write(*,"(A,I,A)")bg_red("Using Nside="),Nside,bg_red(" instead")
+        write(*,"(A,I4,A)")bg_red("Using Nside="),Nside,bg_red(" instead")
      endif
   endif
 
@@ -33,11 +35,11 @@
   !definisco dei nuovi boundaries per il mapping da i a isite,jsite
   !NB Nside e' sempre dispari nel programma
   if(symmflag) then
-   allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
+     allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
   else
-   allocate(ij2site(1:Nside,1:Nside))
+     allocate(ij2site(1:Nside,1:Nside))
   endif
-  
+
   allocate(nii(Ns))
   allocate(dii(Ns))
   allocate(gap_ii(Ns))
@@ -48,19 +50,19 @@
 
   !CREATE DATA_DIR FOR AND STORE THIS IDUM 
   name_dir="data_trap"
-  if(mpiID==0)then
-     call create_data_dir(trim(adjustl(trim(name_dir))))
-  endif
+  if(mpiID==0)call create_data_dir(trim(adjustl(trim(name_dir))))
+
 
 
   !BUILD THE LATTICE HAMILTONIAN:
   !=====================================================================
-! call get_tb_hamiltonian(centered=.true.)
-! call get_tb_hamiltonian(centered=.false.)
+  ! call get_tb_hamiltonian(centered=.true.)
+  ! call get_tb_hamiltonian(centered=.false.)
+
   call get_tb_hamiltonian(symmflag) 
 
-! dentro H0 non cambia nulla perche' e' tutto in termini dell'indice di stato 
-! che e' indipendente dal sistema di coordinate
+  ! dentro H0 non cambia nulla perche' e' tutto in termini dell'indice di stato 
+  ! che e' indipendente dal sistema di coordinate
 
   !REDUCE THE PROBLEM BY TAKING INTO ACCOUNT TRAP SYMMETRIES:
   !=====================================================================

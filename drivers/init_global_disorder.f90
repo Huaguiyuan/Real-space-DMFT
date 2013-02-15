@@ -25,8 +25,9 @@
 
   !CREATE DATA_DIR FOR AND STORE THIS IDUM 
   !=====================================================================
-  write(name_dir,"(I12)")idum
-  name_dir="idum_"//trim(adjustl(trim(name_dir)))
+  !write(name_dir,"(I12)")idum
+  !name_dir="idum_"//trim(adjustl(trim(name_dir)))
+  name_dir='data_disorder'
   if(mpiID==0)then
      call create_data_dir(trim(adjustl(trim(name_dir))))
      open(10,file="list_idum",access='append')
@@ -38,7 +39,6 @@
   !BUILD THE LATTICE HAMILTONIAN:
   !=====================================================================
   call get_tb_hamiltonian
-
 
   !BUILD RANDOM ENERGIES:
   !=====================================================================

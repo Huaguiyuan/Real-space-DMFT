@@ -1,10 +1,12 @@
 #=========================================================================
-include sfmake.inc
+#include sfmake.inc
+include lib.mk
 #=========================================================================
 FC=$(SFMPI)/mpif90
 DIREXE=$(HOME)/.bin
-EXE=ahm_matsubara_trap
-DIR=drivers/ahm_matsubara
+DIR=drivers
+EXE=ahm_matsubara_disorder
+
 
 .SUFFIXES: .f90 
 OBJS = SOLVER_VARS_GLOBAL.o IPT_SC_MATS.o  IPT_SC_SOPT.o IPT_MATS.o IPT_SOPT.o  SOLVER_INTERFACE.o RDMFT_VARS_GLOBAL.o
@@ -67,5 +69,6 @@ clean:
 	@echo 'removing *.mod *.o *~'
 	@rm -fv *.mod *.o *~ revision.inc
 
-version:
-	@echo $(VER)
+#version:
+#	@echo $(VER)
+include version.mk

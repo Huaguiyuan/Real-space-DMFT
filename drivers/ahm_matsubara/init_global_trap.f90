@@ -1,1 +1,0 @@
-../init_global_trap.f90
