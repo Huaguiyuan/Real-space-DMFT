@@ -12,9 +12,8 @@ program ahm_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  complex(8),allocatable,dimension(:,:)   :: fg0
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
-  logical                                 :: converged,converged1,converged2
+  logical                                 :: converged
   real(8)                                 :: r
   integer                                 :: i,is
 
@@ -30,7 +29,6 @@ program ahm_matsubara_disorder
   tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
 
   allocate(fg(2,Ns,L))
-  allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
   !
   allocate(sigma_tmp(2,Ns,L))
@@ -60,7 +58,7 @@ program ahm_matsubara_disorder
      call end_loop()
   enddo
 
-  deallocate(fg,fg0,sigma,sigma_tmp,nii_tmp,dii_tmp)
+  deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp)
 
   if(mpiID==0) then 
      open(10,file="used.inputRDMFT.in")
@@ -148,7 +146,7 @@ contains
     dii_tmp  =zero
     do is=1+mpiID,Ns,mpiSIZE
        call solve_per_site(is)
-       call eta(is,Ns)
+       call eta(is,Ns,file="Impurity.eta")
     enddo
     call stop_timer
     call MPI_REDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
@@ -172,7 +170,7 @@ contains
     integer                                      :: is
     complex(8)                                   :: det(L)
     complex(8),dimension(:,:,:),allocatable,save :: sold
-    complex(8),dimension(2,L)                    :: calG
+    complex(8),dimension(2,L)                    :: calG,fg0
     real(8),dimension(2,0:L)                     :: fgt,fg0t
     real(8)                                      :: n,n0,delta,delta0
     if(.not.allocated(sold))allocate(sold(2,Ns,L))
@@ -216,19 +214,19 @@ contains
 
 
   subroutine print_sc_out(converged)
-    integer                   :: i,j,is,row,col
-    real(8)                   :: nimp,delta,ccdw
-    real(8),dimension(Ns)     :: cdwii,rii,sii,zii
-    real(8),dimension(Ns,Ns)  :: dij,nij,cij
-    real(8),dimension(Nside)  :: grid_x,grid_y
-    real(8)                   :: mean,sdev,var,skew,kurt
-    real(8),dimension(2,Ns)   :: data_covariance
-    real(8),dimension(2,2)    :: covariance_nd
-    real(8),dimension(2)      :: data_mean,data_sdev
-    logical                   :: converged
-    real(8),dimension(2,0:L)  :: fgt
-    complex(8),dimension(2,L) :: afg,asigma
-    character(len=4) :: loop
+    integer                         :: i,j,is,row,col
+    real(8)                         :: nimp,delta,ccdw
+    real(8),dimension(Ns)           :: cdwii,rii,sii,zii
+    real(8),dimension(Nside,Nside) :: dij,nij,cij
+    real(8),dimension(Nside)        :: grid_x,grid_y
+    real(8)                         :: mean,sdev,var,skew,kurt
+    real(8),dimension(2,Ns)         :: data_covariance
+    real(8),dimension(2,2)          :: covariance_nd
+    real(8),dimension(2)            :: data_mean,data_sdev
+    logical                         :: converged
+    real(8),dimension(2,0:L)        :: fgt
+    complex(8),dimension(2,L)       :: afg,asigma
+    character(len=4)                :: loop
 
 
     if(mpiID==0)then
@@ -245,11 +243,13 @@ contains
        print*,"nimp  =",nimp
        print*,"delta =",delta
        print*,"ccdw  =",ccdw
+
        call splot(reg(name_dir)//"/nVSiloop.data",iloop,nimp,append=.true.)
        call splot(reg(name_dir)//"/deltaVSiloop.data",iloop,delta,append=.true.)
        call splot(reg(name_dir)//"/ccdwVSiloop.data",iloop,ccdw,append=.true.)
        call splot(reg(name_dir)//"/nVSisite.data",nii)
        call splot(reg(name_dir)//"/deltaVSisite.data",dii)
+
        !
        call splot(reg(name_dir)//"/LSigma_iw.data",wm(1:L),sigma(1,1:Ns,1:L))
        call splot(reg(name_dir)//"/LSelf_iw.data",wm(1:L),sigma(2,1:Ns,1:L))
@@ -297,6 +297,7 @@ contains
           !Plot averaged local functions
           afg    = sum(fg,dim=2)/real(Ns,8)
           asigma = sum(sigma,dim=2)/real(Ns,8)
+
           call splot(reg(name_dir)//"/aSigma_iw.data",wm,asigma(1,:))
           call splot(reg(name_dir)//"/aSelf_iw.data",wm,asigma(2,:))
           call splot(reg(name_dir)//"/aG_iw.data",wm,afg(1,:))
@@ -343,7 +344,6 @@ contains
        end if
 
     end if
-    return
   end subroutine print_sc_out
 
 
@@ -384,8 +384,5 @@ contains
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu
 
-
-  !******************************************************************
-  !******************************************************************
 
 end program ahm_matsubara_disorder

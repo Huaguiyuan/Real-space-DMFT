@@ -11,11 +11,9 @@ program ahm_real_trap
   real(8)                                 :: n_tot,delta_tot
   integer                                 :: is,esp,lm
   logical                                 :: converged,convergedN,convergedD
-  complex(8),allocatable,dimension(:,:)   :: fg0,fg_0
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
-
-  real(8),allocatable,dimension(:) :: acheck
+  real(8),allocatable,dimension(:)        :: acheck
 
   !GLOBAL INITIALIZATION:
   !===============================================================
@@ -27,9 +25,7 @@ program ahm_real_trap
   allocate(wr(L))
   wr = linspace(-wmax,wmax,L,mesh=fmesh)
 
-  allocate(fg_0(Ns,L)) ! noninteracting Green Function ! only spin up !
   allocate(fg(2,Ns,L))
-  allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
   !
   allocate(sigma_tmp(2,Ns,L))
@@ -40,13 +36,11 @@ program ahm_real_trap
      allocate(acheck(2*Ns))
   endif
 
-  if(mpiID==0) print*,"Working on the real frequencies axis"
+  !==============================================================
 
   ! calcolo la funzione di Green non interagente del sistema corrispondente 
-
   if(mpiID==0) print*,"Non-Interacting System"
   call get_gloc0_mpi()
-  if(mpiID==0)call splot(trim(adjustl(trim(name_dir)))//"/LG0_realw.data",fg_0(1:Ns,1:L),wr(1:L))  
 
 
   !==============================================================
@@ -77,7 +71,9 @@ program ahm_real_trap
         acheck(1:Ns)=nii
         acheck(Ns+1:2*Ns)=dii
      endif
-     converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,id=0,strict=.true.)
+     !converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,id=0,strict=.true.)
+     converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,&
+          id=0,file=reg(name_dir)//"error.err",strict=.true.)
 
      if (densfixed) call search_mu_trap(converged) ! search_mu(converged)
 
@@ -87,7 +83,7 @@ program ahm_real_trap
      call end_loop()
   enddo
 
-  deallocate(fg,fg0,fg_0,sigma,sigma_tmp,nii_tmp,dii_tmp,gap_ii_tmp)
+  deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp,gap_ii_tmp)
 
   if(mpiID==0) then 
      open(10,file="used.inputRDMFT.in")
@@ -133,8 +129,8 @@ contains
        check=check1.AND.check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma_realw.ipt",sigma(1,1:Ns,1:L),wr)
-          call sread("LSelf_realw.ipt",sigma(2,1:Ns,1:L),wr)
+          call sread("LSigma_realw.ipt",wr,sigma(1,1:Ns,1:L))
+          call sread("LSelf_realw.ipt",wr,sigma(2,1:Ns,1:L))
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
@@ -164,7 +160,7 @@ contains
           Gloc(is,is)      =  zeta1
           Gloc(Ns+is,Ns+is)=  zeta2
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,L+1-i)   ! check
+          Gloc(Ns+is,is)   = -sigma(2,is,L+1-i)   ! check it! should be conjg 15/02/2013!
        enddo
        call matrix_inverse_sym(Gloc)!,2*Ns)
        forall(is=1:Ns)
@@ -203,7 +199,7 @@ contains
 
 
   subroutine get_gloc0_mpi()   ! in the noninteracting case the spins are independent
-    complex(8) :: Gloc0(Ns,Ns),gf0_tmp(Ns,L),zeta   ! tutte locali
+    complex(8) :: Gloc0(Ns,Ns),gf0_tmp(Ns,L),zeta,fg_0(Ns,L)   ! tutte locali
     integer    :: i,is
     call msg("Get local noninteracting GF: (ETA --> fort.999)",id=0)
     call start_timer
@@ -225,6 +221,7 @@ contains
     call MPI_REDUCE(gf0_tmp,fg_0,Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
     call MPI_BCAST(fg_0,Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    if(mpiID==0)call splot(trim(adjustl(trim(name_dir)))//"/LG0_realw.data",fg_0(1:Ns,1:L),wr(1:L))
   end subroutine get_gloc0_mpi
 
 
@@ -287,8 +284,7 @@ contains
     integer                                      :: is,i
     complex(8)                                   :: det
     complex(8),dimension(:,:,:),allocatable,save :: sold
-    complex(8),dimension(2,L)                    :: calG
-    real(8),dimension(2,0:L)                     :: fgt,fg0t
+    complex(8),dimension(2,L)                    :: calG,fg0
     real(8)                                      :: n,n0,delta,delta0
 
     if(.not.allocated(sold))allocate(sold(2,Ns,L))
@@ -343,17 +339,27 @@ contains
     real(8),allocatable      :: gap_ij(:,:)
     if(mpiID==0)then
 
-       !BUILD A GRID FOR  LATTICE PLOTS:                 
-       if (.not.allocated(grid_x)) then 
-          allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
-          allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          allocate(gap_ij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          do row=-Nside/2,Nside/2
-             grid_x(row)=dble(row)
-             grid_y(row)=dble(row)
-          enddo
+       !BUILD A GRID FOR  LATTICE PLOTS:
+       if(.not.allocated(grid_x)) then 
+          if(summflag)then
+             allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
+             allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             do row=-Nside/2,Nside/2
+                grid_x(row)=dble(row)
+                grid_y(row)=dble(row)
+             enddo
+          else
+             allocate(grid_x(1:Nside),grid_y(1:Nside))
+             allocate(nij(1:Nside,1:Nside))
+             allocate(dij(1:Nside,1:Nside))
+             allocate(eij(1:Nside,1:Nside))
+             do row=1,Nside
+                grid_x(row)=dble(row)
+                grid_y(row)=dble(row)
+             enddo
+          endif
        endif
 
        !Evaluate the CDW order-parameter and threshold for occupation
@@ -362,7 +368,7 @@ contains
        do is=1,Ns
           cdw(is) = (nii(is)-1.d0)*((-1.d0)**abs(irow(is)+icol(is))) 
           C=C+cdw(is)
-          if (nii(is).ge.density_threshold) occupied=occupied+1
+          if(nii(is).ge.density_threshold) occupied=occupied+1
        enddo
 
        !Special points
@@ -383,9 +389,8 @@ contains
        n_border= nii(border)
        n_min   = minval(nii)
        e_corner= a0trap+etrap(corner)
-
-       call splot("ntotVSiloop.ipt",iloop,n_tot)!,append=TT)
-       call splot("davVSiloop.ipt",iloop,delta_av)!,append=TT)
+       call splot("ntotVSiloop.ipt",iloop,n_tot,append=.true.)
+       call splot("davVSiloop.ipt",iloop,delta_av,append=.true.)
 
        !Print some information to user:
        print*,"========================================"
@@ -420,31 +425,31 @@ contains
           enddo
        endif
 
-       call splot("3d_nVSij.ipt",grid_x,grid_y,nij)
-       call splot("3d_deltaVSij.ipt",grid_x,grid_y,dij)
 
+       call splot3d("3d_nVSij.ipt",grid_x,grid_y,nij)
+       call splot3d("3d_deltaVSij.ipt",grid_x,grid_y,dij)
 
-       !STORE GREEN's FUNCTIONS AND SELF-ENERGY IN COMPACT FORM TO SAVE SPACE
-       call splot("LSigma.ipt",sigma(1,1:Ns,1:L),wr)
-       call splot("LSelf.ipt",sigma(2,1:Ns,1:L),wr)
-       call splot("LG.ipt",fg(1,1:Ns,1:L),wr)
-       call splot("LF.ipt",fg(2,1:Ns,1:L),wr)
+       !STORE GREEN's FUNCTIONS AND SELF-ENERGY
+       call splot("LSigma.ipt",wr,sigma(1,1:Ns,1:L))
+       call splot("LSelf.ipt",wr,sigma(2,1:Ns,1:L))
+       call splot("LG.ipt",wr,fg(1,1:Ns,1:L))
+       call splot("LF.ipt",wr,fg(2,1:Ns,1:L))
 
 
        !plotting selected green-function and self-energies for quick
        !data processing and debugging
-       call splot("Gloc_iw_center.ipt",wr,fg(1,center,1:L),append=printf)
-       call splot("Floc_iw_center.ipt",wr,fg(2,center,1:L),append=printf)
-       call splot("Sigma_iw_center.ipt",wr,sigma(1,center,1:L),append=printf)
-       call splot("Self_iw_center.ipt",wr,sigma(2,center,1:L),append=printf)
-       call splot("Gloc_iw_border.ipt",wr,fg(1,border,1:L),append=printf)
-       call splot("Floc_iw_border.ipt",wr,fg(2,border,1:L),append=printf)
-       call splot("Sigma_iw_border.ipt",wr,sigma(1,border,1:L),append=printf)
-       call splot("Self_iw_border.ipt",wr,sigma(2,border,1:L),append=printf)
-       call splot("Gloc_iw_corner.ipt",wr,fg(1,corner,1:L),append=printf)
-       call splot("Floc_iw_corner.ipt",wr,fg(2,corner,1:L),append=printf)
-       call splot("Sigma_iw_corner.ipt",wr,sigma(1,corner,1:L),append=printf)
-       call splot("Self_iw_corner.ipt",wr,sigma(2,corner,1:L),append=printf)
+       call splot("Gloc_iw_center.ipt",wr,fg(1,center,1:L))
+       call splot("Floc_iw_center.ipt",wr,fg(2,center,1:L))
+       call splot("Sigma_iw_center.ipt",wr,sigma(1,center,1:L))
+       call splot("Self_iw_center.ipt",wr,sigma(2,center,1:L))
+       call splot("Gloc_iw_border.ipt",wr,fg(1,border,1:L))
+       call splot("Floc_iw_border.ipt",wr,fg(2,border,1:L))
+       call splot("Sigma_iw_border.ipt",wr,sigma(1,border,1:L))
+       call splot("Self_iw_border.ipt",wr,sigma(2,border,1:L))
+       call splot("Gloc_iw_corner.ipt",wr,fg(1,corner,1:L))
+       call splot("Floc_iw_corner.ipt",wr,fg(2,corner,1:L))
+       call splot("Sigma_iw_corner.ipt",wr,sigma(1,corner,1:L))
+       call splot("Self_iw_corner.ipt",wr,sigma(2,corner,1:L))
 
 
 
@@ -492,10 +497,11 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/2d_etrapVSij.data",grid_y,eij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_gapVSij.data",grid_y,gap_ij(0,:))
 
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_nVSij.data",grid_x,grid_y,nij)
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_deltaVSij.data",grid_x,grid_y,dij)
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_etrapVSij.data",grid_x,grid_y,eij)
-          call splot(trim(adjustl(trim(name_dir)))//"/3d_gapVSij.data",grid_x,grid_y,gap_ij)
+
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_nVSij.data",grid_x,grid_y,nij)
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_deltaVSij.data",grid_x,grid_y,dij)
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_etrapVSij.data",grid_x,grid_y,eij)
+          call splot3d(trim(adjustl(trim(name_dir)))//"/3d_gapVSij.data",grid_x,grid_y,gap_ij)
 
        endif
     end if
@@ -741,8 +747,8 @@ contains
     i_minus =maxloc(dos_(1:L/2))
     gap_plus  = wr_(i_plus(1)+L/2)
     gap_minus =-wr_(i_minus(1))
-!    print*,"gap_+ =", gap_plus
-!    print*,"gap_ =" , gap_minus
+    !    print*,"gap_+ =", gap_plus
+    !    print*,"gap_ =" , gap_minus
     gap_=min(gap_plus,gap_minus)
   end subroutine get_gap
 

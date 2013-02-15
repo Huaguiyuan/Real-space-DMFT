@@ -11,7 +11,6 @@ program ahm_matsubara_trap
   real(8)                                 :: n_tot,delta_tot
   integer                                 :: is,esp,lm
   logical                                 :: converged,convergedN,convergedD
-  complex(8),allocatable,dimension(:,:)   :: fg0 
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
   real(8),allocatable,dimension(:) :: acheck
@@ -28,7 +27,6 @@ program ahm_matsubara_trap
   tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
 
   allocate(fg(2,Ns,L))
-  allocate(fg0(2,L))
   allocate(sigma(2,Ns,L))
   !
   allocate(sigma_tmp(2,Ns,L))
@@ -78,7 +76,7 @@ program ahm_matsubara_trap
      call end_loop()
   enddo
 
-  deallocate(fg,fg0,sigma,sigma_tmp,nii_tmp,dii_tmp)
+  deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp)
 
   if(mpiID==0) then 
      open(10,file="used.inputRDMFT.in")
@@ -227,7 +225,7 @@ contains
     integer                                      :: is,i
     complex(8)                                   :: det(L)
     complex(8),dimension(:,:,:),allocatable,save :: sold
-    complex(8),dimension(2,L)                    :: calG
+    complex(8),dimension(2,L)                    :: calG,fg0
     real(8),dimension(2,0:L)                     :: fgt,fg0t
     real(8)                                      :: n,n0,delta,delta0
 
@@ -282,15 +280,25 @@ contains
 
        !BUILD A GRID FOR  LATTICE PLOTS:                 
        if(.not.allocated(grid_x)) then 
-          allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
-          allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-          allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
-
-          do row=-Nside/2,Nside/2
-             grid_x(row)=dble(row)
-             grid_y(row)=dble(row)
-          enddo
+          if(summflag)then
+             allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
+             allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             do row=-Nside/2,Nside/2
+                grid_x(row)=dble(row)
+                grid_y(row)=dble(row)
+             enddo
+          else
+             allocate(grid_x(1:Nside),grid_y(1:Nside))
+             allocate(nij(1:Nside,1:Nside))
+             allocate(dij(1:Nside,1:Nside))
+             allocate(eij(1:Nside,1:Nside))
+             do row=1,Nside
+                grid_x(row)=dble(row)
+                grid_y(row)=dble(row)
+             enddo
+          endif
        endif
 
        !Evaluate the CDW order-parameter and threshold for occupation
@@ -360,7 +368,6 @@ contains
        call splot3d("3d_nVSij.ipt",grid_x,grid_y,nij)
        call splot3d("3d_deltaVSij.ipt",grid_x,grid_y,dij)
 
-
        !STORE GREEN's FUNCTIONS AND SELF-ENERGY
        call splot("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
        call splot("LSelf.ipt",wm,sigma(2,1:Ns,1:L))
@@ -370,19 +377,18 @@ contains
 
        !plotting selected green-function and self-energies for quick
        !data processing and debugging
-       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L))!,append=printf)
-       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L))!,append=printf)
-       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L))!,append=printf)
-       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L))!,append=printf)
-       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L))!,append=printf)
-       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L))!,append=printf)
-       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L))!,append=printf)
-       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L))!,append=printf)
-       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L))!,append=printf)
-       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L))!,append=printf)
-       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L))!,append=printf)
-       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L))!,append=printf)
-
+       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L))
+       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L))
+       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L))
+       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L))
+       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L))
+       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L))
+       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L))
+       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L))
+       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L))
+       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L))
+       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L))
+       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L))
 
 
 
@@ -411,7 +417,6 @@ contains
                 do col=-Nside/2,Nside/2
                    i            = ij2site(row,col)
                    eij(row,col) = etrap(i)
-
                 enddo
              enddo
           else 
@@ -419,7 +424,6 @@ contains
                 do col=1,Nside
                    i            = ij2site(row,col)
                    eij(row,col) = etrap(i)
-
                 enddo
              enddo
           endif
@@ -427,7 +431,6 @@ contains
           call splot(trim(adjustl(trim(name_dir)))//"/2d_nVSij.data",grid_y,nij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_deltaVSij.data",grid_y,dij(0,:))
           call splot(trim(adjustl(trim(name_dir)))//"/2d_etrapVSij.data",grid_y,eij(0,:))
-
 
           call splot3d(trim(adjustl(trim(name_dir)))//"/3d_nVSij.data",grid_x,grid_y,nij)
           call splot3d(trim(adjustl(trim(name_dir)))//"/3d_deltaVSij.data",grid_x,grid_y,dij)

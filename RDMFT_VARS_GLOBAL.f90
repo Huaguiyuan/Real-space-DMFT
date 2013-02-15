@@ -240,7 +240,7 @@ contains
              link(4)= (row-1)*Nside+1          + col     ; if((row-1)<0)     link(4)=0
           endif
           do jj=1,4
-             if(link(jj)>0)H0(i,link(jj))=-ts !! ts e' positivo [controllare che sia tutto ok] 
+             if(link(jj)>0)H0(i,link(jj))=-ts !! ts must be negative.
           enddo
        enddo
     enddo
