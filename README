@@ -1,11 +1,10 @@
 This README file provides informations about how to set-up the 
-make.inc file and successfully compile codes based on SciFor 
-library in a local directory.
+make.inc file and successfully compile the code in this 
+portable branch.
 
 EDIT MAKE.INC:
 ==================================================================
-The make.inc file contains some informaions about the system vital 
-for the compilation process:
+The make.inc file contains some informaions about the system 
 1) the fortran (95) compiler used, with some additional flags like:
    a) the flag to choose in which directory compile the .mod files 
       (output from compiling modules)
@@ -13,7 +12,7 @@ for the compilation process:
 In the local ./etc dir there several example of make.inc for LINUX 
 and OSX architecture and Intel and GNU fortran compilers.
 
-2) the MATHEMATICAL library intended to use. The codes are developed 
+2) the MATHEMATICAL library to use. The codes are developed 
 using MKL from Intel. A minimal alternative is to use standard 
 Blas/Lapack libraries, that have to be compatible (i.e. compiled) 
 with the chosen compiler. If no MKL is available, then you should:
@@ -44,11 +43,3 @@ Edit the local Makefile to:
 If necessary compare with the makefile.template available in 
 local ./etc.
 
-
-4) In many codes, at least those using GIT I added a revision 
-variables internal to the fortran code. This is included at 
-compilation time from the file "revision.inc"
-This file is generated before compilation from the Makefile 
-based on git output. In the portable version there is no GIT, 
-so the branch-git HEAD serial number MUST be specified by hand in 
-the makefile, stored in the REV variable.
