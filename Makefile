@@ -4,8 +4,8 @@ include sfmake.inc
 FC=$(SFMPI)/mpif90
 DIREXE=$(HOME)/.bin
 DIR=drivers
-#EXE=ahm_real_trap
-EXE=ahm_real_disorder
+EXE=ahm_real_trap
+#EXE=ahm_real_disorder
 
 
 .SUFFIXES: .f90 

@@ -346,6 +346,7 @@ contains
              allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
              allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
              allocate(eij(-Nside/2:Nside/2,-Nside/2:Nside/2))
+             allocate(gap_ij(-Nside/2:Nside/2,-Nside/2:Nside/2))
              do row=-Nside/2,Nside/2
                 grid_x(row)=dble(row)
                 grid_y(row)=dble(row)
@@ -355,6 +356,7 @@ contains
              allocate(nij(1:Nside,1:Nside))
              allocate(dij(1:Nside,1:Nside))
              allocate(eij(1:Nside,1:Nside))
+             allocate(gap_ij(1:Nside,1:Nside))
              do row=1,Nside
                 grid_x(row)=dble(row)
                 grid_y(row)=dble(row)
