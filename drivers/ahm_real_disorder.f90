@@ -117,10 +117,10 @@ contains
           Gloc(is,is)      = zeta1
           Gloc(Ns+is,Ns+is)= zeta2
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          !We checked that IPT_dev from Antonio also used conjg, as well as all the IPT codes.
           Gloc(Ns+is,is)   = -conjg(sigma(2,is,L+1-i)) !check with or without conjg!!
        enddo
-       call matrix_inverse_sym(Gloc)!,2*Ns)
+       call matrix_inverse(Gloc)!,2*Ns)
+       ! call matrix_inverse_sym(Gloc)!,2*Ns)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)

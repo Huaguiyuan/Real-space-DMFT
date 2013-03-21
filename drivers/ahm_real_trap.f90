@@ -160,9 +160,9 @@ contains
           Gloc(is,is)      =  zeta1
           Gloc(Ns+is,Ns+is)=  zeta2
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,L+1-i)   ! check it! should be conjg 15/02/2013!
+          Gloc(Ns+is,is)   = -conjg(sigma(2,is,L+1-i))   ! check it! should be conjg 15/02/2013!
        enddo
-       call matrix_inverse_sym(Gloc)!,2*Ns)
+       call matrix_inverse(Gloc)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)
@@ -341,7 +341,7 @@ contains
 
        !BUILD A GRID FOR  LATTICE PLOTS:
        if(.not.allocated(grid_x)) then 
-          if(summflag)then
+          if(symmflag)then
              allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
              allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
              allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
