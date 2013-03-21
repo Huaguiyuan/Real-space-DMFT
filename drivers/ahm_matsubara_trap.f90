@@ -66,7 +66,7 @@ program ahm_matsubara_trap
      endif
 
      converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,&
-          id=0,file=reg(name_dir)//"error.err",strict=.true.)
+          id=0,file=reg(name_dir)//"/error.err",strict=.true.)
 
      if (densfixed) call search_mu_trap(converged) !this is a better version of search_mu great for trap!
 

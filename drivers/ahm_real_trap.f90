@@ -73,7 +73,7 @@ program ahm_real_trap
      endif
      !converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,id=0,strict=.true.)
      converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,&
-          id=0,file=reg(name_dir)//"error.err",strict=.true.)
+          id=0,file=reg(name_dir)//"/error.err",strict=.true.)
 
      if (densfixed) call search_mu_trap(converged) ! search_mu(converged)
 
