@@ -1,0 +1,26 @@
+#COMPILATION FLAGS:
+FC=gfortran 
+MOPT=-J
+STD=-O2 #more optimized options: -O3 -funroll-all-loops -fno-f2c
+DEB=-O0 -p -g -Wall
+
+#FLAGS for the library
+FFLAG+= $(STD) -static
+DFLAG+= $(DEB) -static
+
+##If you have MKL installed and sourced:
+#IFORT 10: -lmkl_em64t -lmkl_core -liomp5  -lpthread
+#IFORT 11,12:
+MATHLIB = -Wl,--start-group  $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
+
+
+##Else comment previous line and comment out the following ones:
+#LAPACKDIR=$(HOME)/lib/local/lapack #ADJUST THIS PATH
+#BLASDIR=$(HOME)/lib/local/blas     #ADJUST THIS PATH
+#MATHLIB = -L$(LAPACKDIR) -L$(BLASDIR) -llapack -lblas
+
+SFLIBS 	   = -L./library_src -lscifor ${MATHLIB}
+SFMODS     = -I./library_src
+
+SFLIBS_DEB = -L./library_src -lscifor_deb ${MATHLIB}
+SFMODS_DEB = -I./library_src/debug

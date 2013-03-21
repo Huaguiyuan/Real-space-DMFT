@@ -1,0 +1,54 @@
+#EDIT THE VARIABLES WITH <> comments
+#=========================================================================
+include make.inc
+REV = '<rev-parse HEAD of the remote GIT>'
+VER='character(len=41),parameter :: revision = "$(REV)"' > revision.inc
+ARGS= $(SFMODS) $(SFLIBS)
+ARGS_DEB=$(SFMODS_DEB) $(SFLIBS_DEB)
+BRANCH=<put here a name to be added to the executable name>
+#$(shell git rev-parse --abbrev-ref HEAD)
+#=========================================================================
+
+EXE=<driver_to_be_compiled - main code [main]>
+DIR=<path to the code from makefile dir [.]>
+DIREXE=<path to PATH dir where to put the executable [.]>
+
+.SUFFIXES: .f90 
+OBJS = <OBJECTS FILE [file.o]>
+
+#=================STANDARD COMPILATION====================================
+all: FLAG=$(STD)
+all: version $(OBJS)
+	@echo " ........... compile: optimized ........... "
+	@echo $(VER)
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
+	@echo " ...................... done .............................. "
+	@echo ""
+	@echo "created" $(DIREXE)/$(EXE)
+
+#================DEBUGGIN COMPILATION=====================================
+debug: FLAG=$(DEB)
+debug: version $(OBJS)
+	@echo " ........... compile : debug   ........... "
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS_DEB)
+	@echo " ...................... done .............................. "
+	@echo ""
+	@echo "created" $(DIREXE)/$(EXE)
+
+.f90.o:	
+	$(FC) $(FLAG) -c $< $(SFMODS) 
+
+lib: 
+	@make -C ./library_src
+
+clean: 
+	@echo 'removing *.mod *.o *~'
+	@rm -vf *.mod *.o *~
+
+clean_all: clean
+	@echo 'cleaning the library'
+	@make -C ./library_src clean
+
+version:
+	@echo $(VER)
+

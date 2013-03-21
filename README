@@ -1,0 +1,54 @@
+This README file provides informations about how to set-up the 
+make.inc file and successfully compile codes based on SciFor 
+library in a local directory.
+
+EDIT MAKE.INC:
+==================================================================
+The make.inc file contains some informaions about the system vital 
+for the compilation process:
+1) the fortran (95) compiler used, with some additional flags like:
+   a) the flag to choose in which directory compile the .mod files 
+      (output from compiling modules)
+   b) the optimization/debug options of the compiler
+In the local ./etc dir there several example of make.inc for LINUX 
+and OSX architecture and Intel and GNU fortran compilers.
+
+2) the MATHEMATICAL library intended to use. The codes are developed 
+using MKL from Intel. A minimal alternative is to use standard 
+Blas/Lapack libraries, that have to be compatible (i.e. compiled) 
+with the chosen compiler. If no MKL is available, then you should:
+   a) set the absolute path to LAPACK directory  
+   b) set the absolute path to BLAS directory
+   c) uncomment the definition of MATHLIB alternative to the MKL 
+      based one
+
+COMPILE LIBSCIFOR:
+=========================================================
+$make lib
+
+if no errors occurs, this process should create the libraries:
+./library_src/libscifor.a
+./library_src/libscifor_deb.a
+and a bunch of .mod files located in the library_src directory.
+The modules are included thry the -I statements specified in the 
+make.inc file.
+
+If something goes wrong you must read the error message and edit 
+the make.inc file accordingly.
+
+3) Copy the necessary source files into the main local directory, 
+keeping the same structure as in the remote computer.
+Edit the local Makefile to:
+     a) include the local make.inc (rather than other files)
+     b) rename local variables
+If necessary compare with the makefile.template available in 
+local ./etc.
+
+
+4) In many codes, at least those using GIT I added a revision 
+variables internal to the fortran code. This is included at 
+compilation time from the file "revision.inc"
+This file is generated before compilation from the Makefile 
+based on git output. In the portable version there is no GIT, 
+so the branch-git HEAD serial number MUST be specified by hand in 
+the makefile, stored in the REV variable.
