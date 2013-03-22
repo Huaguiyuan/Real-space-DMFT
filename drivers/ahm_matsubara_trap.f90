@@ -13,7 +13,7 @@ program ahm_matsubara_trap
   logical                                 :: converged,convergedN,convergedD
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
   real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
-  real(8),allocatable,dimension(:) :: acheck
+  real(8),allocatable,dimension(:)        :: acheck
 
   !GLOBAL INITIALIZATION:
   !===============================================================
@@ -122,8 +122,10 @@ contains
        check=check1.AND.check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
-          call sread("LSelf.ipt" ,wm,sigma(2,1:Ns,1:L))
+!          call sread("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
+!          call sread("LSelf.ipt" ,wm,sigma(2,1:Ns,1:L))
+          call sread("LSigma.ipt",sigma(1,1:Ns,1:L),wm)
+          call sread("LSelf.ipt" ,sigma(2,1:Ns,1:L),wm)
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy:",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc

@@ -5,7 +5,7 @@
   call MPI_COMM_SIZE(MPI_COMM_WORLD,mpiSIZE,mpiERR)
   write(*,"(A,I4,A,I4,A)")'Processor ',mpiID,' of ',mpiSIZE,' is alive'
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  flush(6)
+!  flush(6)
 
 
   !READ INPUT FILES:
