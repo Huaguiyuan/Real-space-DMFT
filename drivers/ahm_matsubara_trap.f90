@@ -280,7 +280,7 @@ contains
 
        !BUILD A GRID FOR  LATTICE PLOTS:                 
        if(.not.allocated(grid_x)) then 
-          if(summflag)then
+          if(symmflag)then
              allocate(grid_x(-Nside/2:Nside/2),grid_y(-Nside/2:Nside/2))
              allocate(nij(-Nside/2:Nside/2,-Nside/2:Nside/2))
              allocate(dij(-Nside/2:Nside/2,-Nside/2:Nside/2))
