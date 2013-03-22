@@ -85,8 +85,10 @@ contains
        check=check1.AND.check2
        if(check)then
           call msg("Reading Self-energy from file:",lines=2)
-          call sread("LSigma_realw.data",wr(1:L),sigma(1,1:Ns,1:L))
-          call sread("LSelf_realw.data",wr(1:L),sigma(2,1:Ns,1:L))
+          ! call sread("LSigma_realw.data",wr(1:L),sigma(1,1:Ns,1:L))
+          ! call sread("LSelf_realw.data",wr(1:L),sigma(2,1:Ns,1:L))
+          call sread("LSigma_realw.data",sigma(1,1:Ns,1:L),wr(1:L))
+          call sread("LSelf_realw.data",sigma(2,1:Ns,1:L),wr(1:L))
        else
           call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
