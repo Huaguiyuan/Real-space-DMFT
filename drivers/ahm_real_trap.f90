@@ -73,7 +73,7 @@ program ahm_real_trap
      endif
      !converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,id=0,strict=.true.)
      converged=check_convergence_scalar(acheck,eps_error,Nsuccess,nloop,&
-          id=0,file=reg(name_dir)//"error.err",strict=.true.)
+          id=0,file=reg(name_dir)//"/error.err",strict=.true.)
 
      if (densfixed) call search_mu_trap(converged) ! search_mu(converged)
 
@@ -160,9 +160,18 @@ contains
           Gloc(is,is)      =  zeta1
           Gloc(Ns+is,Ns+is)=  zeta2
           Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -conjg(sigma(2,is,L+1-i))   ! check it! should be conjg 15/02/2013!
+          !S_12(w)=S^*(-w), by symmetry =S(w)=S_12(w)
+          !we set this block to the correct function S^*(-w)
+          !anyway with respect to the next call to *symmetric* 
+          !matrix inversion this position is irrelevant 
+          !as the routine only consider the upper blocks triangles (11,12,22)
+          Gloc(Ns+is,is)   = -conjg(sigma(2,is,L+1-i))
        enddo
-       call matrix_inverse(Gloc)
+       !the call to *symmetry* routine enforces the symmetry condition
+       !S^*(-w)=S(w)
+       !this condition can be numerically broken using the generic 
+       !inversion routine generating small (though sizeable) errors. 
+       call matrix_inverse_sym(Gloc)
        forall(is=1:Ns)
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Ns+is)

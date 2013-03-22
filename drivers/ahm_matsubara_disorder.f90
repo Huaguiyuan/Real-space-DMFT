@@ -48,7 +48,6 @@ program ahm_matsubara_disorder
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
      call solve_sc_impurity_mpi()
 
-     ! !##ACTHUNG!!
      converged = check_convergence_scalar(dii,eps_error,Nsuccess,nloop,&
           id=0,file=reg(name_dir)//"/error.err")
 
