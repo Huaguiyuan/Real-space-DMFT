@@ -6,7 +6,7 @@
 ! calling this program many times providing a *different* seed 
 ! +IDUM. The result of each calculation is stored different dir
 ! indexed by the seed itself.
-!AUTHORS  : A.Amaricci, A.Priviter (CNR-IOM)
+!AUTHORS  : A.Amaricci, A.Privitera (CNR-IOM)
 !########################################################
 program ahm_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
@@ -235,12 +235,17 @@ contains
 
        nimp = sum(nii)/dble(Ns)
        delta= sum(dii)/dble(Ns)
+
+       ! CDW order parameter
        ccdw = 0.d0
        do is=1,Ns
           row=irow(is)
           col=icol(is)
           ccdw = ccdw + (-1.d0)**(row+col)*(nii(is)-1.d0)
        enddo
+       ccdw=ccdw/dble(Ns)     
+       ! va normalizzato al numero di siti
+
        print*,"nimp  =",nimp
        print*,"delta =",delta
        print*,"ccdw  =",ccdw
