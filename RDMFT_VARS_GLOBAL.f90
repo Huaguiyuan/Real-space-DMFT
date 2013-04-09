@@ -93,6 +93,7 @@ module RDMFT_VARS_GLOBAL
   logical           :: symmflag
   logical           :: densfixed
   real(8)           :: nread,nerror,ndelta
+  real(8)           :: eav ! average energy of the random variables, see init
 
   !Random energies
   !=========================================================

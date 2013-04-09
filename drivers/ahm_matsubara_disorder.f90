@@ -53,8 +53,12 @@ program ahm_matsubara_disorder
 
      if(nread/=0.d0)call search_mu(converged)
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
-     call print_sc_out(converged)
-     call end_loop()
+     if(iloop.eq.nloop) then 
+       converged=.true.
+       if (mpiID==0) print*,"We have reached the max number of loops -> FORCE EXIT"
+    endif
+       call print_sc_out(converged)
+       call end_loop()
   enddo
 
   deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp)

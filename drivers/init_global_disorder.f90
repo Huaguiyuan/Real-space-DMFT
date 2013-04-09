@@ -48,3 +48,15 @@
   do is=1,Ns
      erandom(is)=(2.d0*nrand(idum)-1.d0)*Wdis/2.d0
   enddo
+
+! we now shift the generated energy distro in order to 
+! have always null average energy for every realization of 
+! disorder. This should ensure that the global chemical potential
+! which gives the right average density in the clean system 
+! also provides the same average density in terms of disorder, i.e. is disorder-
+! independent. 
+
+  eav=1.d0/dble(Ns)*sum(erandom)
+
+  erandom=erandom-eav 
+  
