@@ -49,6 +49,8 @@
      erandom(is)=(2.d0*nrand(idum)-1.d0)*Wdis/2.d0
   enddo
 
+
+
 ! we now shift the generated energy distro in order to 
 ! have always null average energy for every realization of 
 ! disorder. This should ensure that the global chemical potential
@@ -57,6 +59,11 @@
 ! independent. 
 
   eav=1.d0/dble(Ns)*sum(erandom)
-
+  
   erandom=erandom-eav 
   
+  if(mpiID==0) then 
+     print*,"average energy for energy landscape"
+     print*,"before shift",eav
+     print*,"after the shift",1.d0/dble(Ns)*sum(erandom)
+  endif
