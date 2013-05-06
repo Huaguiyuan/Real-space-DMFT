@@ -1,3 +1,5 @@
+
+
 !###############################################################
 ! PROGRAM  : RDMFT_VARS_GLOBAL
 ! TYPE     : Module
@@ -21,12 +23,14 @@
 !  ndelta=[0.1]  -- starting value for chemical potential shift.
 !  nerror=[1.d-4]-- max error in adjusting chemical potential. 
 !  symmflag=[T]  -- Enforce trap cubic symmetry in the xy-plane.
+!  optimized=[T] -- Optimized Crossover, find trap parameters to have N_wanted particles and nread density at the trap center.
 !  n_wanted=[0]  -- Required number of particles in the trap. Fix to 0 (default) for mufixed
 !  n_tol=[0.1]   -- Tolerance over the total density
 !  chitrap=[0.1] -- Tentative value of the global trap compressibility
 !  pbcflag=[T]   -- periodic boundary conditions.
 !  idum=[1234567]-- initial seed for the random variable sample.	
 !###############################################################
+
 module RDMFT_VARS_GLOBAL
   !Scientific library
   USE COMMON_VARS
@@ -38,6 +42,8 @@ module RDMFT_VARS_GLOBAL
   USE INTEGRATE, ONLY:kronig
   USE FUNCTIONS, ONLY:fermi
   USE TOOLS,     ONLY:check_convergence
+  USE BROYDEN,   ONLY:broydn    ! added broyden to the accessible modules
+
   !Impurity solver interface
   USE SOLVER_INTERFACE
   !parallel library
@@ -78,10 +84,13 @@ module RDMFT_VARS_GLOBAL
   integer :: idum               !disorder seed
   real(8) :: a0trap             !Trap bottom
   real(8) :: V0trap             !Trap curvature in x,y directions (assumed circular symmetry)
+
   !***To be renamed***
+
   integer :: N_wanted           !Required number of particles for canonical calculations [set 0 for fixmu]
   real(8) :: N_tol              !Tolerance over the number of particles
   real(8) :: chitrap            !Tentative value for the global trap compressibility dN/d(mu_{tot})
+
   !real(8) :: gammatrap          !Trap_asymmetry in the third dimension (not implemented yet)
   !integer :: dim                !Spatial dimension (1,2,3) not implemented yet     
 
@@ -91,9 +100,21 @@ module RDMFT_VARS_GLOBAL
   character(len=20) :: name_dir
   logical           :: pbcflag
   logical           :: symmflag
-  logical           :: densfixed
-  real(8)           :: nread,nerror,ndelta
+  logical           :: optimized                ! added to set the optimized crossover from input file. If TRUE
+  logical           :: densfixed                ! we use both N_wanted\=0 and nread to fix the central density 
+  real(8)           :: nread,nerror,ndelta  ! used to fix the central density in the optimized crossover
   real(8)           :: eav ! average energy of the random variables, see init
+
+  !TEST 
+  !=========================================================
+  real(8)                                 :: r
+  real(8)                                 :: n_tot,delta_tot,n_center
+  integer                                 :: is,esp,lm
+  logical                                 :: converged,convergedN,convergedD
+  complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
+  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
+  real(8),allocatable,dimension(:)        :: acheck
+  real(8),dimension(2)                    :: dens_w
 
   !Random energies
   !=========================================================
@@ -121,6 +142,7 @@ module RDMFT_VARS_GLOBAL
        nerror,   &
        ndelta,   &
        symmflag, &
+       optimized,& 
        N_wanted, &
        N_tol,    &
        chitrap,  &   
@@ -138,6 +160,7 @@ contains
     integer          :: i
     logical          :: control
     !local variables: default values
+
     Wdis            = 0.5d0
     Nside           = 10
     a0trap          = 0.d0
@@ -146,6 +169,7 @@ contains
     nerror          = 1.d-4
     ndelta          = 0.1d0
     symmflag        =.false.
+    optimized       =.false.
     N_wanted        = Nside**2/2
     N_tol           = 0.1d0
     chitrap         = 0.1d0 
@@ -177,10 +201,11 @@ contains
     call parse_cmd_variable(nread,"NREAD")
     call parse_cmd_variable(nerror,"NERROR")
     call parse_cmd_variable(ndelta,"NDELTA")
-    call parse_cmd_variable(n_wanted,"NWANTED")
+    call parse_cmd_variable(n_wanted,"N_WANTED")
     call parse_cmd_variable(n_tol,"NTOL")
     call parse_cmd_variable(chitrap,"CHITRAP")
     call parse_cmd_variable(symmflag,"SYMMFLAG")
+    call parse_cmd_variable(optimized,"OPTIMIZED")
     call parse_cmd_variable(pbcflag,"PBCFLAG")
     call parse_cmd_variable(idum,"IDUM")
 
@@ -375,6 +400,5 @@ contains
        m_out(i,:)=m_in(indipsites(i),:)
     enddo
   end function zm_reshuffled
-
 
 end module RDMFT_VARS_GLOBAL

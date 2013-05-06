@@ -1,24 +1,43 @@
-!########################################################
+!#################################################################################
 !     PURPOSE  :solve the attractive (A) Trapped (T) Hubbard
 ! model (HM) using Modified Perturbation THeory (MPT), w/ DMFT
 !     AUTHORS  : A.Amaricci, A.Privitera (CNR-IOM)
-!########################################################
+!
+!#################################################################################
 
 program ahm_matsubara_trap
+
+!#################################################################################
+! modified version for the optimized crossover. Uses broyden two-dimensional 
+! in order to fix the total density and the density in the center by changing the trap 
+! curvature and the global chemical potential.
+!#################################################################################
+
+
   USE RDMFT_VARS_GLOBAL
   implicit none
-  real(8)                                 :: r
-  real(8)                                 :: n_tot,delta_tot
-  integer                                 :: is,esp,lm
-  logical                                 :: converged,convergedN,convergedD
-  complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
-  real(8),allocatable,dimension(:)        :: acheck
+
+  real(8)                                 :: x(2)
+
+! broyden parameters
+  logical                                 :: check,noexit
+  INTEGER                                 :: maxits_=300
+  real(8),PARAMETER                       :: tolf_=1.0d-3,tolmin_=1.0e-7,sptmx_=100.0
+   
+! NOW IN RDMFT_VARS_GLOBAL=========================================================
+!  real(8)                                 :: r
+!  real(8)                                 :: n_tot,delta_tot,n_center
+!  integer                                 :: is,esp,lm
+!  logical                                 :: converged,convergedN,convergedD,check
+!  complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
+!  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp,gap_ii_tmp
+!  real(8),allocatable,dimension(:)        :: acheck
+!==================================================================================
 
   !GLOBAL INITIALIZATION:
   !===============================================================
-  include "init_global_trap.f90" 
 
+  include "init_global_trap.f90" ! now the trap creation has been moved to inside the DMFTloop function
 
   !ALLOCATE WORKING ARRAYS
   !===============================================================
@@ -36,11 +55,90 @@ program ahm_matsubara_trap
   else
      allocate(acheck(2*Ns))
   endif
+ 
+!  allocate(x(2))
+
+  x(1)=a0trap; x(2)=V0trap
+
+  if (mpiID==0) then
+     print*,""
+     print*,"Initial trap_par"
+     print*,"a0trap",x(1)
+     print*,"V0trap",x(2)
+     print*,""
+  endif
+
+  if (optimized) then 
+     call broydn(x,check,MAXITS=maxits_,TOLF=tolf_)
+  else
+     call RDMFT
+  endif
+
+  deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp)
+
+  if(mpiID==0) then 
+     open(10,file="used.inputRDMFT.in")
+     write(10,nml=disorder)
+     close(10)
+  endif
+
+
+  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  call MPI_FINALIZE(mpiERR)
+
+end program ahm_matsubara_trap
+
+function funcv(x)  ! this is just because broyden algorithm now wants to have a function funcv in input 
+USE RDMFT_VARS_GLOBAL
+implicit none
+
+! changed because of the inner interface in broydn
+
+real(8),dimension(:),intent(in) :: x
+real(8),dimension(size(x))      :: funcv
+!real(8),dimension(size(x))      :: dens_w!,RDMFT
+
+!external RDMFT
+
+!dens_w(1)=30.d0
+!dens_w(2)=1.0d0
+
+!print*,"inside funcv"
+
+a0trap=x(1); V0trap=x(2)     ! update of the global variables so I don't have to 
+                                           ! redefine them for the other routines
+call RDMFT
+
+funcv(1)=n_tot-dens_w(1)
+funcv(2)=n_center-dens_w(2)
+
+end function funcv
+
+subroutine RDMFT 
+USE RDMFT_VARS_GLOBAL
+implicit none
+
+!real(8),dimension(:) ::x
+
+!real(8),dimension(size(trap_par))   ::RDMFT
+
+!a0trap=x(1); V0trap=x(2)     ! update of the global variables so I don't have to 
+                                           ! redefine them for the other routines
+!print*,"after NOT assign"
 
   !==============================================================
 
   !START DMFT LOOP SEQUENCE:
   !==============================================================
+
+   if (mpiID==0) then      
+      print*,"**********************************************************************"
+      write(*,"(A,f15.9,A,f15.9)")"now calling RDMFT loop with a0trap",a0trap," and V0trap ",V0trap
+      print*,"**********************************************************************"
+   endif
+
+  call buildtrap
+
   call setup_initial_sc_sigma()
   iloop=0 ; converged=.false.
   do while(.not.converged)
@@ -55,7 +153,9 @@ program ahm_matsubara_trap
 
      n_tot    = sum(nii)
      delta_tot= sum(dii)
-     if(mpiID==0)write(*,"(A,F15.9)")"Number of Particles=",n_tot
+     n_center=nii(ij2site(0,0))
+
+     if(mpiID==0)write(*,"(A,F15.9,A,F15.9)")"Number of Particles=",n_tot, ", Central density", n_center
 
      if (symmflag) then
         acheck(1:Nindip)=reshuffled(nii)
@@ -70,29 +170,18 @@ program ahm_matsubara_trap
 
      if (densfixed) call search_mu_trap(converged) !this is a better version of search_mu great for trap!
 
+!     if (optimized) call search_trap_par(converged)! Now we do a multiple search in the space of parameters V0 A0TRAP using BRENT 
+
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
 
      call print_sc_out(converged)
      call end_loop()
   enddo
 
-  deallocate(fg,sigma,sigma_tmp,nii_tmp,dii_tmp)
-
-  if(mpiID==0) then 
-     open(10,file="used.inputRDMFT.in")
-     write(10,nml=disorder)
-     close(10)
-  endif
-
-
-  call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  call MPI_FINALIZE(mpiERR)
-
-
-
+!  RDMFT(1)=n_tot
+!  RDMFT(2)=n_center
 
 contains
-
 
   !******************************************************************
   !******************************************************************
@@ -311,6 +400,7 @@ contains
           C=C+cdw(is)
           if(nii(is).ge.density_threshold) occupied=occupied+1
        enddo
+       C=C/dble(Ns) ! now it is normalized
 
        !Special points
        if(symmflag)then
@@ -330,8 +420,8 @@ contains
        n_border= nii(border)
        n_min   = minval(nii)
        e_corner= a0trap+etrap(corner)
-       call splot("ntotVSiloop.ipt",iloop,n_tot,append=.true.)
-       call splot("davVSiloop.ipt",iloop,delta_av,append=.true.)
+       call splot(trim(adjustl(trim(name_dir)))//"ntotVSiloop.ipt",iloop,n_tot,append=.true.)
+       call splot(trim(adjustl(trim(name_dir)))//"davVSiloop.ipt",iloop,delta_av,append=.true.)
 
        !Print some information to user:
        print*,"========================================"
@@ -367,30 +457,30 @@ contains
        endif
 
 
-       call splot3d("3d_nVSij.ipt",grid_x,grid_y,nij)
-       call splot3d("3d_deltaVSij.ipt",grid_x,grid_y,dij)
+       call splot3d(trim(adjustl(trim(name_dir)))//"3d_nVSij.ipt",grid_x,grid_y,nij)
+       call splot3d(trim(adjustl(trim(name_dir)))//"3d_deltaVSij.ipt",grid_x,grid_y,dij)
 
        !STORE GREEN's FUNCTIONS AND SELF-ENERGY
-       call splot("LSigma.ipt",wm,sigma(1,1:Ns,1:L))
-       call splot("LSelf.ipt",wm,sigma(2,1:Ns,1:L))
-       call splot("LG.ipt",wm,fg(1,1:Ns,1:L))
-       call splot("LF.ipt",wm,fg(2,1:Ns,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"LSigma.ipt",wm,sigma(1,1:Ns,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"LSelf.ipt",wm,sigma(2,1:Ns,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"LG.ipt",wm,fg(1,1:Ns,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"LF.ipt",wm,fg(2,1:Ns,1:L))
 
 
        !plotting selected green-function and self-energies for quick
        !data processing and debugging
-       call splot("Gloc_iw_center.ipt",wm,fg(1,center,1:L))
-       call splot("Floc_iw_center.ipt",wm,fg(2,center,1:L))
-       call splot("Sigma_iw_center.ipt",wm,sigma(1,center,1:L))
-       call splot("Self_iw_center.ipt",wm,sigma(2,center,1:L))
-       call splot("Gloc_iw_border.ipt",wm,fg(1,border,1:L))
-       call splot("Floc_iw_border.ipt",wm,fg(2,border,1:L))
-       call splot("Sigma_iw_border.ipt",wm,sigma(1,border,1:L))
-       call splot("Self_iw_border.ipt",wm,sigma(2,border,1:L))
-       call splot("Gloc_iw_corner.ipt",wm,fg(1,corner,1:L))
-       call splot("Floc_iw_corner.ipt",wm,fg(2,corner,1:L))
-       call splot("Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L))
-       call splot("Self_iw_corner.ipt",wm,sigma(2,corner,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Gloc_iw_center.ipt",wm,fg(1,center,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Floc_iw_center.ipt",wm,fg(2,center,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Sigma_iw_center.ipt",wm,sigma(1,center,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Self_iw_center.ipt",wm,sigma(2,center,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Gloc_iw_border.ipt",wm,fg(1,border,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Floc_iw_border.ipt",wm,fg(2,border,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Sigma_iw_border.ipt",wm,sigma(1,border,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Self_iw_border.ipt",wm,sigma(2,border,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Gloc_iw_corner.ipt",wm,fg(1,corner,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Floc_iw_corner.ipt",wm,fg(2,corner,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Sigma_iw_corner.ipt",wm,sigma(1,corner,1:L))
+       call splot(trim(adjustl(trim(name_dir)))//"Self_iw_corner.ipt",wm,sigma(2,corner,1:L))
 
 
 
@@ -637,6 +727,17 @@ contains
   end subroutine search_mu_trap
 
 
+subroutine buildtrap
+  !BUILD THE TRAP:
+  !=====================================================================
+  do is=1,Ns
+     etrap(is)= -0.5d0*v0trap*trap_distance_square(is)
+  enddo
+end subroutine buildtrap
+
+end subroutine RDMFT
 
 
-end program ahm_matsubara_trap
+
+
+

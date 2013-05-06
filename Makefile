@@ -5,8 +5,8 @@ include make.inc
 FC=mpif90
 DIREXE=$(HOME)/.bin
 DIR=drivers
-#EXE=ahm_matsubara_trap
-EXE=ahm_matsubara_disorder
+EXE=ahm_matsubara_trap
+#EXE=ahm_matsubara_disorder
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
 

@@ -12,32 +12,49 @@
 
   contains
 
-    SUBROUTINE broydn(x,check,noexit)
+    SUBROUTINE broydn(x,check,MAXITS,TOLF,TOLMIN,STPMX,noexit)
       REAL(8), DIMENSION(:), INTENT(INOUT) :: x
-      logical,optional     :: noexit
+
+      logical, optional    :: noexit
       LOGICAL, INTENT(OUT) :: check
-      INTEGER, PARAMETER :: MAXITS=50
-      REAL(8), PARAMETER :: EPS=epsilon(x),TOLF=1.0e-5,TOLMIN=1.0e-7,TOLX=EPS,STPMX=100.0
+
+      INTEGER, optional    :: MAXITS
+      INTEGER              :: MAXITS_=200
+
+      REAL(8), optional    :: TOLF,TOLMIN,STPMX
+
+      REAL(8)              :: TOLF_=1.0e-5,TOLMIN_=1.0e-7,STPMX_=100.0
+
+      REAL(8),parameter    :: EPS=epsilon(x),TOLX=EPS
+
+
       INTEGER :: i,its,k,n
       REAL(8) :: f,fold,stpmax
       REAL(8), DIMENSION(size(x)), TARGET :: fvec
       REAL(8), DIMENSION(size(x)) :: c,d,fvcold,g,p,s,t,w,xold
       REAL(8), DIMENSION(size(x),size(x)) :: qt,r
-      LOGICAL :: restrt,sing,noexit_
+      LOGICAL :: restrt,sing,noexit_=.false. !AA: exit on error, set to true makes broyden not exiting on error!    
 
-      noexit_=.false.                   !AA: exit on error, set to true makes broyden not exiting on error!
-      if(present(noexit))noexit_=noexit 
+      if(present(noexit))   noexit_  = noexit
+ 
+      if(present(MAXITS))   MAXITS_  = MAXITS  
+
+      if(present(TOLF))     TOLF_    = TOLF
+
+      if(present(TOLMIN))   TOLMIN_  = TOLMIN  
+
+      if(present(STPMX))    STPMX_   = STPMX  
 
       fmin_fvecp=>fvec
       n=size(x)
       f=fmin(x)
-      if (maxval(abs(fvec(:))) < 0.01d0*TOLF) then
+      if (maxval(abs(fvec(:))) < 0.01d0*TOLF_) then
          check=.false.
          RETURN
       end if
-      stpmax=STPMX*max(vabs(x(:)),real(n,8))
+      stpmax=STPMX_*max(vabs(x(:)),real(n,8))
       restrt=.true.
-      do its=1,MAXITS
+      do its=1,MAXITS_
          if (restrt) then
             call fdjac(x,fvec,r)
             call qrdcmp(r,c,d,sing)
@@ -92,13 +109,13 @@
          fold=f
          call rsolv(r,d,p)
          call lnsrch(xold,fold,g,p,x,f,stpmax,check,fmin)
-         if (maxval(abs(fvec(:))) < TOLF) then
+         if (maxval(abs(fvec(:))) < TOLF_) then
             check=.false.
             RETURN
          end if
          if (check) then
             if (restrt .or. maxval(abs(g(:))*max(abs(x(:)), &
-                 1.0d0)/max(f,0.5d0*n)) < TOLMIN) RETURN
+                 1.0d0)/max(f,0.5d0*n)) < TOLMIN_) RETURN
             restrt=.true.
          else
             restrt=.false.

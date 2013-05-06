@@ -34,6 +34,7 @@
   allocate(icol(Ns),irow(Ns))
   !definisco dei nuovi boundaries per il mapping da i a isite,jsite
   !NB Nside e' sempre dispari nel programma
+
   if(symmflag) then
      allocate(ij2site(-Nside/2:Nside/2,-Nside/2:Nside/2))  
   else
@@ -84,19 +85,34 @@
         write(*,*)""
      endif
   else
+     if (optimized==.false.) then
      densfixed=.true.
      !deltan=1.0d0                    ! to be read from input ?
      if (mpiID==0) then 
+        write(*,*)"======================================================" 
         write(*,"(A,I6)")"Working at fixed total particle number            =",N_wanted
         write(*,"(A,F12.9)")"Required tolerance over the number of particles=",N_tol
         write(*,"(A,F12.9)")"Starting value for the trap compressibility    =",chitrap
         write(*,"(A,F12.9)")"Initial step in mu                             =",ndelta
+        write(*,*)""
+     endif
+     else ! optimized crossover, uses 
+         dens_w(1)=N_wanted 
+         dens_w(2)=nread
+         if (mpiID==0) then 
+            write(*,*)"======================================================" 
+            write(*,"(A)")       "Optimized Crossover"
+            write(*,"(A,I6)")    "Total particle number = ",N_wanted
+            write(*,"(A,F12.9)") "Central density       = ",nread
+            write(*,*)""
+         endif
      endif
   endif
 
 
-  !BUILD THE TRAP:
-  !=====================================================================
-  do is=1,Ns
-     etrap(is)= 0.5d0*V0trap*trap_distance_square(is)
-  enddo
+  ! !BUILD THE TRAP:
+  ! !=====================================================================
+  ! do is=1,Ns
+  !    etrap(is)= 0.5d0*V0trap*trap_distance_square(is)
+  ! enddo
+  
