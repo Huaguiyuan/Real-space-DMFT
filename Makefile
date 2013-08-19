@@ -1,8 +1,8 @@
 #=========================================================================
 include make.inc
 #=========================================================================
-#FC=$(SFMPI)/mpif90
-FC=mpif90
+FC=$(SFMPI)/mpif90
+#FC=mpif90
 DIREXE=$(HOME)/.bin
 DIR=drivers
 EXE=ahm_matsubara_trap

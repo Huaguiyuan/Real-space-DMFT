@@ -12,7 +12,7 @@ DFLAG+= $(DEB) -static
 #IFORT 10: -lmkl_em64t -lmkl_core -liomp5  -lpthread
 #IFORT 11,12:
 MATHLIB = -Wl,--start-group  $(MKLROOT)/lib/intel64/libmkl_intel_lp64.a $(MKLROOT)/lib/intel64/libmkl_sequential.a $(MKLROOT)/lib/intel64/libmkl_core.a -Wl,--end-group -lpthread -lm
-MATHLIB = -Wl,--start-group  $(MKLROOT)/lib/em64t/libmkl_intel_lp64.a $(MKLROOT)/lib/em64t/libmkl_sequential.a $(MKLROOT)/lib/em64t/libmkl_core.a -Wl,--end-group -lpthread -lm
+#MATHLIB = -Wl,--start-group  $(MKLROOT)/lib/em64t/libmkl_intel_lp64.a $(MKLROOT)/lib/em64t/libmkl_sequential.a $(MKLROOT)/lib/em64t/libmkl_core.a -Wl,--end-group -lpthread -lm
 
 ##Else comment previous line and comment out the following ones:
 ##In some systems LAPACK/BLAS are default, so there's no need to
