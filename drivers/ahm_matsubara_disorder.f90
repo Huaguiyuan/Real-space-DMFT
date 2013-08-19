@@ -12,7 +12,7 @@ program ahm_matsubara_disorder
   USE RDMFT_VARS_GLOBAL
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma,sigma_tmp
-  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp
+  real(8),allocatable,dimension(:)        :: nii_tmp,dii_tmp !these are used w/ MPI 
   logical                                 :: converged
   real(8)                                 :: r
   integer                                 :: i,is
@@ -84,11 +84,11 @@ contains
        if(.not.check2)inquire(file="LSelf_iw.data.gz",exist=check2)
        check=check1.AND.check2
        if(check)then
-          call msg("Reading Self-energy from file:",lines=2)
+          call msg("Reading Self-energy from file:")
           call sread("LSigma_iw.data",wm,sigma(1,1:Ns,1:L))
           call sread("LSelf_iw.data",wm,sigma(2,1:Ns,1:L))
        else
-          call msg("Using Hartree-Fock-Bogoliubov self-energy",lines=2)
+          call msg("Using Hartree-Fock-Bogoliubov self-energy")
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif
@@ -246,8 +246,8 @@ contains
        call splot(reg(name_dir)//"/nVSiloop.data",iloop,nimp,append=.true.)
        call splot(reg(name_dir)//"/deltaVSiloop.data",iloop,delta,append=.true.)
        call splot(reg(name_dir)//"/ccdwVSiloop.data",iloop,ccdw,append=.true.)
-       call splot(reg(name_dir)//"/nVSisite.data",nii)
-       call splot(reg(name_dir)//"/deltaVSisite.data",dii)
+       call store_data(reg(name_dir)//"/nVSisite.data",nii)
+       call store_data(reg(name_dir)//"/deltaVSisite.data",dii)
 
        !
        call splot(reg(name_dir)//"/LSigma_iw.data",wm(1:L),sigma(1,1:Ns,1:L))
@@ -284,11 +284,11 @@ contains
           enddo
 
 
-          call splot(reg(name_dir)//"/cdwVSisite.data",cdwii)
-          call splot(reg(name_dir)//"/rhoVSisite.data",rii)
-          call splot(reg(name_dir)//"/sigmaVSisite.data",sii)
-          call splot(reg(name_dir)//"/zetaVSisite.data",zii)
-          call splot(reg(name_dir)//"/erandomVSisite.data",erandom)
+          call store_data(reg(name_dir)//"/cdwVSisite.data",cdwii)
+          call store_data(reg(name_dir)//"/rhoVSisite.data",rii)
+          call store_data(reg(name_dir)//"/sigmaVSisite.data",sii)
+          call store_data(reg(name_dir)//"/zetaVSisite.data",zii)
+          call store_data(reg(name_dir)//"/erandomVSisite.data",erandom)
           call splot3d(reg(name_dir)//"/3d_nVSij.ipt",grid_x,grid_y,nij)
           call splot3d(reg(name_dir)//"/3d_deltaVSij.ipt",grid_x,grid_y,dij)
 

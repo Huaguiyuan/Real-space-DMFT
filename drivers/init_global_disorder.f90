@@ -35,14 +35,13 @@
      close(10)
   endif
 
-
   !BUILD THE LATTICE HAMILTONIAN:
   !=====================================================================
   call get_tb_hamiltonian
 
   !BUILD RANDOM ENERGIES:
   !=====================================================================
-  do i=1,50                     !get rid of few spurious random number in NR
+  do i=1,100                     !get rid of few spurious random number in NR
      r=nrand(idum)
   enddo
   do is=1,Ns

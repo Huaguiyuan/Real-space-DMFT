@@ -30,6 +30,7 @@
 module RDMFT_VARS_GLOBAL
   !Scientific library
   USE COMMON_VARS
+  USE SCIFOR_VERSION
   USE TIMER, ONLY:start_timer,stop_timer,eta
   USE IOTOOLS
   USE MATRIX
