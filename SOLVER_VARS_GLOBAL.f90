@@ -60,8 +60,6 @@ module SOLVER_VARS_GLOBAL
   real(8) :: fmesh          !freq. step
   real(8) :: beta           !inverse temperature
   real(8) :: eps            !broadening
-  integer :: Nx
-  logical :: printf
   real(8) :: wmin,wmax
   real(8) :: eps_error
   integer :: Nsuccess
@@ -78,10 +76,8 @@ module SOLVER_VARS_GLOBAL
        tdd,tpp,  &
        xmu,      &
        wmax,     &
-       Nx,       &
        nloop,    &
        eps,      &
-       printf,   &
        weight,   &
        eps_error,&
        Nsuccess, &
@@ -91,9 +87,7 @@ module SOLVER_VARS_GLOBAL
 contains
 
   !+----------------------------------------------------------------+
-  !PROGRAM  : READinput
-  !TYPE     : subroutine
-  !PURPOSE  : Read input file
+  !PURPOSE  : Read SOLVER input file
   !+----------------------------------------------------------------+
   subroutine read_input(inputFILE)
     character(len=*) :: inputFILE
@@ -110,12 +104,10 @@ contains
     ed0=0.d0
     ep0=0.d0
     xmu   = 0.d0
-    Nx    = 20
     nloop = 10
     eps   = 0.01d0
     wmax  = 5.d0
     L     = 2048
-    printf= .true.
     weight= 0.9d0
     eps_error= 1.d-4
     Nsuccess = 2
@@ -141,13 +133,11 @@ contains
     call parse_cmd_variable(vpd,"VPD")
     call parse_cmd_variable(ed0,"ED0")
     call parse_cmd_variable(ep0,"EP0")
-    call parse_cmd_variable(nx,"NX")
     call parse_cmd_variable(nloop,"NLOOP")
     call parse_cmd_variable(L,"L")
     call parse_cmd_variable(eps,"EPS")
     call parse_cmd_variable(wmax,"WMAX")
     call parse_cmd_variable(weight,"WEIGTH","WEIGHT")
-    call parse_cmd_variable(printf,"PRINTF")
     call parse_cmd_variable(eps_error,"EPS_ERROR")
     call parse_cmd_variable(nsuccess,"NSUCCESS")
     call parse_cmd_variable(deltasc,"DELTASC")

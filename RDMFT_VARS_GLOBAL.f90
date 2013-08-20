@@ -1,7 +1,5 @@
 !###############################################################
 ! PROGRAM  : RDMFT_VARS_GLOBAL
-! TYPE     : Module
-! PURPOSE  : Contains global variables
 ! AUTHORS  : Adriano Amaricci & Antonio Privitera
 ! NAME
 !   xxx_disorder/trap  
@@ -40,7 +38,7 @@ module RDMFT_VARS_GLOBAL
   USE FUNCTIONS, ONLY:fermi
   USE TOOLS,     ONLY:check_convergence
   !Impurity solver interface
-  USE SOLVER_INTERFACE
+  USE SOLVER_VARS_GLOBAL
   !parallel library
   USE MPI
   implicit none
@@ -83,31 +81,25 @@ module RDMFT_VARS_GLOBAL
   integer :: N_wanted           !Required number of particles for canonical calculations [set 0 for fixmu]
   real(8) :: N_tol              !Tolerance over the number of particles
   real(8) :: chitrap            !Tentative value for the global trap compressibility dN/d(mu_{tot})
-  !real(8) :: gammatrap          !Trap_asymmetry in the third dimension (not implemented yet)
-  !integer :: dim                !Spatial dimension (1,2,3) not implemented yet     
 
 
   !Other variables:
   !=========================================================
-  character(len=20) :: name_dir
   logical           :: pbcflag
   logical           :: symmflag
   logical           :: densfixed
   real(8)           :: nread,nerror,ndelta
+  integer           :: mix_type
+  ! !Random energies
+  ! !=========================================================
+  ! real(8),dimension(:),allocatable   :: erandom,etrap
 
-  !Random energies
+
+  !Restart files
   !=========================================================
-  real(8),dimension(:),allocatable   :: erandom,etrap
+  character(len=64)          :: fileSig,fileSelf
 
 
-  interface symmetrize
-     module procedure c_symmetrize,r_symmetrize
-  end interface symmetrize
-
-  interface reshuffled
-     module procedure dv_reshuffled,zv_reshuffled,&
-          dm_reshuffled,zm_reshuffled
-  end interface reshuffled
 
   !Namelist:
   !=========================================================
@@ -120,10 +112,13 @@ module RDMFT_VARS_GLOBAL
        nread,    &
        nerror,   &
        ndelta,   &
+       fileSig,  &
+       fileSelf, &
        symmflag, &
        N_wanted, &
        N_tol,    &
-       chitrap,  &   
+       chitrap,  &
+       mix_type, &   
        pbcflag
 
 
@@ -139,17 +134,20 @@ contains
     logical          :: control
     !local variables: default values
     Wdis            = 0.5d0
-    Nside           = 10
+    Nside           = 5
     a0trap          = 0.d0
     v0trap          = 0.1d0
     nread           = 0.d0
     nerror          = 1.d-4
     ndelta          = 0.1d0
+    fileSig         = "LSigma.data"
+    fileSelf        = "LSelf.data"
     symmflag        =.false.
     N_wanted        = Nside**2/2
     N_tol           = 0.1d0
     chitrap         = 0.1d0 
     pbcflag         = .true.
+    mix_type        = 0
     idum            = 1234567
 
 
@@ -179,9 +177,12 @@ contains
     call parse_cmd_variable(ndelta,"NDELTA")
     call parse_cmd_variable(n_wanted,"NWANTED")
     call parse_cmd_variable(n_tol,"NTOL")
+    call parse_cmd_variable(fileSig,"FILESIG")
+    call parse_cmd_variable(fileSelf,"FILESELF")
     call parse_cmd_variable(chitrap,"CHITRAP")
     call parse_cmd_variable(symmflag,"SYMMFLAG")
     call parse_cmd_variable(pbcflag,"PBCFLAG")
+    call parse_cmd_variable(mix_type,"MIX_TYPE")
     call parse_cmd_variable(idum,"IDUM")
 
     !Print on the screen used vars
@@ -192,189 +193,24 @@ contains
        close(10)
     endif
 
+    !------SET NUMBER OF LATTICE SITES------!
+    Ns    =Nside**2
+    !---------------------------------------!
+
+    allocate(nii(Ns))
+    allocate(dii(Ns))
+
+    !STORE THIS IDUM 
+    !=====================================================================
+    if(mpiID==0)then
+       open(10,file="list_idum",access='append')
+       write(10,*)idum
+       close(10)
+    endif
+
     call version(revision)
   end subroutine rdmft_read_input
 
-
-
-
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
-
-
-
-  !+----------------------------------------------------------------+
-  !PURPOSE  : Build tight-binding Hamiltonian
-  !+----------------------------------------------------------------+
-  subroutine get_tb_hamiltonian(centered)
-    integer          :: i,jj,j,k,row,col,link(4)
-    logical,optional :: centered
-    logical          :: symm
-    symm=.false.;if(present(centered))symm=centered
-    H0=0.d0
-    do row=0,Nside-1
-       do col=0,Nside-1
-          i=col+row*Nside+1
-          if(.not.symm)then
-             irow(i)=row+1
-             icol(i)=col+1
-             ij2site(row+1,col+1)=i
-          else
-             irow(i)=-Nside/2+row                     ! cambio la tabella i -> isite,jsite
-             icol(i)=-Nside/2+col                     ! per farla simmetrica.. aiutera' 
-             ij2site(row-Nside/2,col-Nside/2)=i       ! a implementare le simmetrie
-          endif
-          !
-          if(pbcflag)then ! PBC are implemented using the state labels and so they are mpt affected by symm
-             !HOPPING w/ PERIODIC BOUNDARY CONDITIONS
-             link(1)= row*Nside+1              + mod(col+1,Nside)  ;
-             link(3)= row*Nside+1              + (col-1)           ; if((col-1)<0)link(3)=(Nside+(col-1))+row*Nside+1
-             link(2)= mod(row+1,Nside)*Nside+1 + col               ; 
-             link(4)= (row-1)*Nside+1          + col               ; if((row-1)<0)link(4)=col+(Nside+(row-1))*Nside+1
-          else   
-             !without PBC
-             link(1)= row*Nside+1              + col+1   ; if((col+1)==Nside)link(1)=0
-             link(3)= row*Nside+1              +(col-1)  ; if((col-1)<0)     link(3)=0
-             link(2)= (row+1)*Nside+1 + col              ; if((row+1)==Nside)link(2)=0
-             link(4)= (row-1)*Nside+1          + col     ; if((row-1)<0)     link(4)=0
-          endif
-          do jj=1,4
-             if(link(jj)>0)H0(i,link(jj))=-ts !! ts must be negative.
-          enddo
-       enddo
-    enddo
-  end subroutine get_tb_hamiltonian
-
-
-
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
-
-
-  !+----------------------------------------------------------------+
-  !PURPOSE : build the list of the indipendent sites (1/8 of the square)
-  !+----------------------------------------------------------------+
-  subroutine get_indip_list()
-    integer :: i,row,col,istate,jstate
-    i=0
-    do col=0,Nside/2
-       do row=0,col
-          i= i+1
-          indipsites(i)=ij2site(row,col)
-       enddo
-    enddo
-  end subroutine get_indip_list
-
-
-
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
-
-
-  !+----------------------------------------------------------------+
-  !PURPOSE : implement the trap simmetries on a real vector variable 
-  ! with Ns components 
-  !+----------------------------------------------------------------+
-  subroutine r_symmetrize(vec)
-    integer                             :: row,col
-    real(8), dimension(:),intent(INOUT) :: vec
-    !assi cartesiani e diagonale  degeneracy=4
-    do col=1,Nside/2
-       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
-       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
-       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
-       vec(ij2site(col, -col))   =vec(ij2site(col,col))
-       vec(ij2site(-col, col))   =vec(ij2site(col,col))
-       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
-    enddo
-    !nel semipiano e fuori dalle linee sopramenzionate degeneracy =8 
-    do col=2,Nside/2    
-       do row=1,col-1
-          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
-          vec(ij2site( row,-col))  =vec(ij2site(row,col))
-          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
-          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
-          vec(ij2site(-col, row))  =vec(ij2site(row,col))
-          vec(ij2site( col,-row))  =vec(ij2site(row,col))
-          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
-       enddo
-    enddo
-  end subroutine r_symmetrize
-  !+----------------------------------------------------------------+
-  subroutine c_symmetrize(vec)
-    integer                                :: row,col
-    complex(8), dimension(:),intent(INOUT) :: vec
-    !assi cartesiani e diagonale  degeneracy=4
-    do col=1,Nside/2
-       vec(ij2site( col,   0))   =vec(ij2site(0,  col))
-       vec(ij2site( 0,  -col))   =vec(ij2site(0,  col))
-       vec(ij2site(-col,   0))   =vec(ij2site(0,  col))
-       vec(ij2site(col, -col))   =vec(ij2site(col,col))
-       vec(ij2site(-col, col))   =vec(ij2site(col,col))
-       vec(ij2site(-col,-col))   =vec(ij2site(col,col))
-    enddo
-    !nel semipiano e fuori dalle linee sopramenzionate degeneracy =8 
-    do col=2,Nside/2    
-       do row=1,col-1
-          vec(ij2site(-row, col))  =vec(ij2site(row,col)) ! riflessioni rispetto agli assi
-          vec(ij2site( row,-col))  =vec(ij2site(row,col))
-          vec(ij2site(-row,-col))  =vec(ij2site(row,col))
-          vec(ij2site( col, row))  =vec(ij2site(row,col)) ! riflessione con la bisettrice 
-          vec(ij2site(-col, row))  =vec(ij2site(row,col))
-          vec(ij2site( col,-row))  =vec(ij2site(row,col))
-          vec(ij2site(-col,-row))  =vec(ij2site(row,col))
-       enddo
-    enddo
-  end subroutine c_symmetrize
-
-
-
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
-  function dv_reshuffled(m_in) result(m_out)
-    integer                               :: i
-    real(8), dimension(Ns)           :: m_in
-    real(8), dimension(Nindip)       :: m_out
-    do i=1,Nindip
-       m_out(i)=m_in(indipsites(i))
-    enddo
-  end function dv_reshuffled
-
-  function zv_reshuffled(m_in) result(m_out)
-    integer                               :: i
-    complex(8), dimension(Ns)           :: m_in
-    complex(8), dimension(Nindip)       :: m_out
-    do i=1,Nindip
-       m_out(i)=m_in(indipsites(i))
-    enddo
-  end function zv_reshuffled
-
-  function dm_reshuffled(m_in) result(m_out)
-    integer                               :: i
-    real(8), dimension(Ns,L)           :: m_in
-    real(8), dimension(Nindip,L)       :: m_out
-    do i=1,Nindip
-       m_out(i,:)=m_in(indipsites(i),:)
-    enddo
-  end function dm_reshuffled
-
-
-  function zm_reshuffled(m_in) result(m_out)
-    integer                               :: i
-    complex(8), dimension(Ns,L)           :: m_in
-    complex(8), dimension(Nindip,L)       :: m_out
-    do i=1,Nindip
-       m_out(i,:)=m_in(indipsites(i),:)
-    enddo
-  end function zm_reshuffled
 
 
 end module RDMFT_VARS_GLOBAL
