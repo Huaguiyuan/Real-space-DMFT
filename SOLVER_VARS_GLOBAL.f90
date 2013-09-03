@@ -137,7 +137,7 @@ contains
     call parse_cmd_variable(L,"L")
     call parse_cmd_variable(eps,"EPS")
     call parse_cmd_variable(wmax,"WMAX")
-    call parse_cmd_variable(weight,"WEIGTH","WEIGHT")
+    call parse_cmd_variable(weight,"WEIGHT")
     call parse_cmd_variable(eps_error,"EPS_ERROR")
     call parse_cmd_variable(nsuccess,"NSUCCESS")
     call parse_cmd_variable(deltasc,"DELTASC")
