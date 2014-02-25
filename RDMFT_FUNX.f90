@@ -12,19 +12,19 @@
 ! solver routine. up to 20/08/2013 it contains only IPT interface.
 !###############################################################
 module RDMFT_FUNX
+  USE RDMFT_INPUT_VARS
   USE RDMFT_VARS_GLOBAL
+  USE TIMER
+  USE FFTGF
+  USE IOTOOLS,   only:reg,sread
+  USE MATRIX,    only:matrix_inverse,matrix_inverse_sym
+  USE RANDOM,    only:nrand,init_random_number
+  USE STATISTICS
+  USE FUNCTIONS, only:fermi
   !Impurity solver interface
   USE SOLVER_INTERFACE
   private
 
-  interface symmetrize
-     module procedure c_symmetrize,r_symmetrize
-  end interface symmetrize
-
-  interface reshuffled
-     module procedure dv_reshuffled,zv_reshuffled,&
-          dm_reshuffled,zm_reshuffled
-  end interface reshuffled
 
   public :: get_tb_hamiltonian
   public :: setup_sc_initial_sigma
@@ -38,6 +38,16 @@ module RDMFT_FUNX
   public :: symmetrize
   public :: reshuffled
 
+  interface symmetrize
+     module procedure c_symmetrize,r_symmetrize
+  end interface symmetrize
+
+  interface reshuffled
+     module procedure dv_reshuffled,zv_reshuffled,&
+          dm_reshuffled,zm_reshuffled
+  end interface reshuffled
+
+
 contains
 
   !+----------------------------------------------------------------+
@@ -48,8 +58,8 @@ contains
     logical,optional :: centered
     logical          :: symm
     symm=.false.;if(present(centered))symm=centered
-    allocate(H0(Ns,Ns))
-    allocate(icol(Ns),irow(Ns))
+    allocate(H0(Nlat,Nlat))
+    allocate(icol(Nlat),irow(Nlat))
     allocate(ij2site(Nside,Nside))
     H0=0.d0
     do row=0,Nside-1
@@ -86,17 +96,32 @@ contains
   end subroutine get_tb_hamiltonian
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
 
 
   !+----------------------------------------------------------------+
   !PURPOSE  : Setup/Read the initial sigma function to start DMFT loop
   !+----------------------------------------------------------------+
+  subroutine setup_initial_sigma(sigma)    
+    complex(8),dimension(Nlat,L) :: sigma
+    real(8)                      :: foo_ome(L)
+    logical                      :: check1,check2,check
+    if(mpiID==0)then
+       inquire(file=reg(fileSig),exist=check1)
+       if(.not.check1)inquire(file=reg(fileSig)//".gz",exist=check1)
+       check=check1
+       if(check)then
+          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          call sread(reg(fileSig), foo_ome,sigma(1:Nlat,1:L))
+       else
+          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
+          sigma(:,:)=zero
+       endif
+    endif
+    call MPI_BCAST(sigma,Nlat*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+  end subroutine setup_initial_sigma
+
   subroutine setup_sc_initial_sigma(sigma)    
-    complex(8),dimension(2,Ns,L) :: sigma
+    complex(8),dimension(2,Nlat,L) :: sigma
     real(8)                      :: foo_ome(L)
     logical                      :: check1,check2,check
     if(mpiID==0)then
@@ -106,21 +131,18 @@ contains
        if(.not.check2)inquire(file=reg(fileSelf)//".gz",exist=check2)
        check=check1.AND.check2
        if(check)then
-          call msg("Reading Self-energy from file:")
-          call sread(reg(fileSig), foo_ome,sigma(1,1:Ns,1:L))
-          call sread(reg(fileSelf),foo_ome,sigma(2,1:Ns,1:L))
+          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          call sread(reg(fileSig), foo_ome,sigma(1,1:Nlat,1:L))
+          call sread(reg(fileSelf),foo_ome,sigma(2,1:Nlat,1:L))
        else
-          call msg("Using Hartree-Fock-Bogoliubov self-energy")
+          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif
-    call MPI_BCAST(sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+    call MPI_BCAST(sigma,2*Nlat*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
   end subroutine setup_sc_initial_sigma
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
 
 
 
@@ -129,86 +151,142 @@ contains
   !PURPOSE  : Evaluate the local GFs in Real-space formalism, 
   ! using matrix inversion
   !+----------------------------------------------------------------+
+  subroutine get_gloc_matsu_mpi(elocal,sigma,fg) 
+    real(8)    :: elocal(Nlat)
+    complex(8) :: fg(Nlat,L),sigma(Nlat,L)
+    complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:L)
+    integer    :: i
+    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    call start_timer
+    gf_tmp=zero
+    fg=zero
+    do i=1+mpiID,L,mpiSIZE
+       zeta  = xi*wm(i) + xmu
+       Gloc  = -H0
+       do is=1,Nlat
+          Gloc(is,is) = Gloc(is,is) + zeta - elocal(is) - sigma(is,i) 
+       enddo
+       call matrix_inverse_sym(Gloc)
+       do is=1,Nlat
+          gf_tmp(is,i) = Gloc(is,is)
+       enddo
+       call eta(i,L,file="Glocal.eta")
+    enddo
+    call stop_timer
+    call MPI_ALLREDUCE(gf_tmp,fg,Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  end subroutine get_gloc_matsu_mpi
+
   subroutine get_sc_gloc_matsu_mpi(elocal,sigma,fg)
-    real(8)    :: elocal(Ns)
-    complex(8) :: fg(2,Ns,L),sigma(2,Ns,L)
-    complex(8) :: Gloc(2*Ns,2*Ns),gf_tmp(2,Ns,L)
+    real(8)    :: elocal(Nlat)
+    complex(8) :: fg(2,Nlat,L),sigma(2,Nlat,L)
+    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,L)
     integer    :: i,is
-    call msg("Get local GF:",id=0)
+    if(mpiID==0)write(LOGunit,*)"Get local GF:"
     call start_timer
     fg=zero
     gf_tmp=zero
     do i=1+mpiID,L,mpiSIZE
        Gloc=zero
-       Gloc(1:Ns,1:Ns)          = -H0
-       Gloc(Ns+1:2*Ns,Ns+1:2*Ns)=  H0
-       do is=1,Ns
+       Gloc(1:Nlat,1:Nlat)          = -H0
+       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
+       do is=1,Nlat
           Gloc(is,is)      =  xi*wm(i)-sigma(1,is,i)        - elocal(is) + xmu
-          Gloc(Ns+is,Ns+is)=  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
-          Gloc(is,Ns+is)   = -sigma(2,is,i)
-          Gloc(Ns+is,is)   = -sigma(2,is,i)!==sigma(2,is,L+1-i) a simmetry in Matsubara!
+          Gloc(Nlat+is,Nlat+is)=  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
+          Gloc(is,Nlat+is)   = -sigma(2,is,i)
+          Gloc(Nlat+is,is)   = -sigma(2,is,i)!==sigma(2,is,L+1-i) a simmetry in Matsubara!
        enddo
        call matrix_inverse_sym(Gloc)
-       forall(is=1:Ns)
+       forall(is=1:Nlat)
           gf_tmp(1,is,i) = Gloc(is,is)
           !##ACTHUNG!!
-          gf_tmp(2,is,i) = dreal(Gloc(is,Ns+is))
+          gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
        end forall
        call eta(i,L,file="Glocal.eta")
     enddo
     call stop_timer
-    call MPI_ALLREDUCE(gf_tmp,fg,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_sc_gloc_matsu_mpi
 
+
+
+
+  subroutine get_gloc_mpi(elocal,sigma,fg) 
+    real(8)    :: elocal(Nlat)
+    complex(8) :: fg(Nlat,L),sigma(Nlat,L)
+    complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:L)
+    integer    :: i
+    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    call start_timer
+    gf_tmp=zero 
+    fg=zero
+    do i=1+mpiID,L,mpiSIZE
+       zeta  = cmplx(wr(i),eps,8) + xmu
+       Gloc  = zero-H0
+       do is=1,Nlat
+          Gloc(is,is)=Gloc(is,is) + zeta - sigma(is,i) - elocal(is)
+       enddo
+       call matrix_inverse_sym(Gloc)
+       do is=1,Nlat
+          gf_tmp(is,i) = Gloc(is,is)
+       enddo
+       call eta(i,L,file="Glocal.eta")
+    enddo
+    call stop_timer
+    call MPI_ALLREDUCE(gf_tmp,fg,Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+  end subroutine get_gloc_mpi
+
   subroutine get_sc_gloc_real_mpi(elocal,sigma,fg)
-    real(8)    :: elocal(Ns)
-    complex(8) :: fg(2,Ns,L),sigma(2,Ns,L)
-    complex(8) :: Gloc(2*Ns,2*Ns),gf_tmp(2,Ns,L),zeta1,zeta2
+    real(8)    :: elocal(Nlat)
+    complex(8) :: fg(2,Nlat,L),sigma(2,Nlat,L)
+    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,L),zeta1,zeta2
     integer    :: i,is
-    call msg("Get local GF:",id=0)
+    if(mpiID==0)write(LOGunit,*)"Get local GF:"
     call start_timer
     fg=zero ; gf_tmp=zero
     do i=1+mpiID,L,mpiSIZE
        Gloc=zero
-       Gloc(1:Ns,1:Ns)          = -H0
-       Gloc(Ns+1:2*Ns,Ns+1:2*Ns)=  H0
-       do is=1,Ns
+       Gloc(1:Nlat,1:Nlat)          = -H0
+       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
+       do is=1,Nlat
           zeta1=        cmplx(wr(i),eps,8)     + xmu - sigma(1,is,i)       - elocal(is)
           zeta2=-conjg( cmplx(wr(L+1-i),eps,8) + xmu - sigma(1,is,L+1-i) ) + elocal(is)
           Gloc(is,is)      = zeta1
-          Gloc(Ns+is,Ns+is)= zeta2
-          Gloc(is,Ns+is)   = -sigma(2,is,i)
+          Gloc(Nlat+is,Nlat+is)= zeta2
+          Gloc(is,Nlat+is)   = -sigma(2,is,i)
           !S_12(w)=S^*(-w), by symmetry =S(w)=S_12(w)
           !we set this block to the correct function S^*(-w)
           !anyway with respect to the next call to *symmetric* 
           !matrix inversion this position is irrelevant 
           !as the routine only consider the upper blocks triangles (11,12,22)
-          Gloc(Ns+is,is)   = -conjg(sigma(2,is,L+1-i))
+          Gloc(Nlat+is,is)   = -conjg(sigma(2,is,L+1-i))
        enddo
        !the call to *symmetry* routine enforces the symmetry condition
        !S^*(-w)=S(w)
        !this condition can be numerically broken using the generic 
        !inversion routine generating small (though sizeable) errors. 
        call matrix_inverse_sym(Gloc)
-       forall(is=1:Ns)
+       forall(is=1:Nlat)
           gf_tmp(1,is,i) = Gloc(is,is)
-          gf_tmp(2,is,i) = Gloc(is,Ns+is)
+          gf_tmp(2,is,i) = Gloc(is,Nlat+is)
        end forall
        call eta(i,L,file="Glocal.eta")
     enddo
     call stop_timer
-    call MPI_ALLREDUCE(gf_tmp,fg,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    ! call MPI_REDUCE(gf_tmp,fg,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,0,MPI_COMM_WORLD,MPIerr)
-    ! call MPI_BCAST(fg,2*Ns*L,MPI_DOUBLE_COMPLEX,0,MPI_COMM_WORLD,mpiERR)
+    call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_sc_gloc_real_mpi
 
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
+
+
+
+
+
+
 
 
   !+----------------------------------------------------------------+
@@ -216,49 +294,48 @@ contains
   !+----------------------------------------------------------------+
   subroutine solve_sc_impurity_matsu_mpi(fg,sigma)
     integer    :: is,i
-    complex(8) :: fg(2,Ns,L),sigma(2,Ns,L)
-    real(8)    :: nii_tmp(Ns),dii_tmp(Ns)
-    complex(8) :: sigma_tmp(2,Ns,L)
-    call msg("Solve impurity:")
+    complex(8) :: fg(2,Nlat,L),sigma(2,Nlat,L)
+    real(8)    :: nii_tmp(Nlat),dii_tmp(Nlat)
+    complex(8) :: sigma_tmp(2,Nlat,L)
+    if(mpiID==0)write(LOGunit,*)"Solve impurity:"
     call start_timer
     sigma_tmp=zero
     nii_tmp  =0.d0
     dii_tmp  =0.d0
-    do is=1+mpiID,Ns,mpiSIZE
+    do is=1+mpiID,Nlat,mpiSIZE
        call ipt_matsu_solve_per_site(is,fg,sigma,sigma_tmp(:,is,:),nii_tmp(is),dii_tmp(is))
-       call eta(is,Ns,file="Impurity.eta")
+       call eta(is,Nlat,file="Impurity.eta")
     enddo
     call stop_timer
-    call MPI_ALLREDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    call MPI_ALLREDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    call MPI_ALLREDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(sigma_tmp,sigma,2*Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(dii_tmp,dii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine solve_sc_impurity_matsu_mpi
 
   subroutine solve_sc_impurity_real_mpi(fg,sigma)
     integer    :: is,i
-    complex(8) :: fg(2,Ns,L),sigma(2,Ns,L)
-    real(8)    :: nii_tmp(Ns),dii_tmp(Ns)
-    complex(8) :: sigma_tmp(2,Ns,L)
-    call msg("Solve impurity:")
+    complex(8) :: fg(2,Nlat,L),sigma(2,Nlat,L)
+    real(8)    :: nii_tmp(Nlat),dii_tmp(Nlat)
+    complex(8) :: sigma_tmp(2,Nlat,L)
+    if(mpiID==0)write(LOGunit,*)"Solve impurity:"
     call start_timer
     sigma_tmp=zero
     nii_tmp  =0.d0
     dii_tmp  =0.d0
-    do is=1+mpiID,Ns,mpiSIZE
+    do is=1+mpiID,Nlat,mpiSIZE
        call ipt_real_solve_per_site(is,fg,sigma,sigma_tmp(:,is,:),nii_tmp(is),dii_tmp(is))
-       call eta(is,Ns,file="Impurity.eta")
+       call eta(is,Nlat,file="Impurity.eta")
     enddo
     call stop_timer
-    call MPI_ALLREDUCE(sigma_tmp,sigma,2*Ns*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    call MPI_ALLREDUCE(nii_tmp,nii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    call MPI_ALLREDUCE(dii_tmp,dii,Ns,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(sigma_tmp,sigma,2*Nlat*L,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_ALLREDUCE(dii_tmp,dii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine solve_sc_impurity_real_mpi
 
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
+
+
 
 
   !+----------------------------------------------------------------+
@@ -266,7 +343,7 @@ contains
   !+----------------------------------------------------------------+
   subroutine ipt_matsu_solve_per_site(is,fg,sigma,sig_tmp,ntmp,dtmp)
     integer,intent(in)                           :: is
-    complex(8),dimension(2,Ns,L),intent(in)      :: fg,sigma !Local GF,Self-energy
+    complex(8),dimension(2,Nlat,L),intent(in)      :: fg,sigma !Local GF,Self-energy
     complex(8),dimension(2,L),intent(out)        :: sig_tmp
     real(8),intent(out)                          :: ntmp,dtmp
     complex(8)                                   :: det(L)
@@ -274,7 +351,7 @@ contains
     complex(8),dimension(2,L)                    :: calG,fg0
     real(8),dimension(2,0:L)                     :: fgt,fg0t
     real(8)                                      :: n,n0,delta,delta0
-    if(.not.allocated(Wold))allocate(Wold(2,Ns,L))
+    if(.not.allocated(Wold))allocate(Wold(2,Nlat,L))
     if(mix_type==1)Wold(:,is,:) = sigma(:,is,:)
     !
     call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
@@ -309,14 +386,14 @@ contains
 
   subroutine ipt_real_solve_per_site(is,fg,sigma,sig_tmp,ntmp,dtmp)
     integer,intent(in)                           :: is
-    complex(8),dimension(2,Ns,L),intent(in)      :: fg,sigma !Local GF,Self-energy
+    complex(8),dimension(2,Nlat,L),intent(in)      :: fg,sigma !Local GF,Self-energy
     complex(8),dimension(2,L),intent(out)        :: sig_tmp
     real(8),intent(out)                          :: ntmp,dtmp
     complex(8)                                   :: det
     complex(8),dimension(:,:,:),allocatable,save :: Wold
     complex(8),dimension(2,1:L)                  :: calG,fg0
     real(8)                                      :: n,n0,delta,delta0
-    if(.not.allocated(Wold))allocate(Wold(2,Ns,1:L))
+    if(.not.allocated(Wold))allocate(Wold(2,Nlat,1:L))
     if(mix_type==1)Wold(:,is,:) = sigma(:,is,:)
     !
     n    = -sum(dimag(fg(1,is,:))*fermi(wr,beta))*fmesh/pi ! densita' per spin
@@ -356,14 +433,6 @@ contains
 
 
 
-  !******************************************************************
-  !******************************************************************
-  !
-  ! TRAP RELATED FUNCTIONS:
-  !
-  !******************************************************************
-  !******************************************************************
-
 
   !+----------------------------------------------------------------+
   !PURPOSE : build the list of the indipendent sites (1/8 of the square)
@@ -381,15 +450,11 @@ contains
 
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
-
 
 
   !+----------------------------------------------------------------+
   !PURPOSE : implement the trap simmetries on a real vector variable 
-  ! with Ns components 
+  ! with Nlat components 
   !+----------------------------------------------------------------+
   subroutine r_symmetrize(vec)
     integer                             :: row,col
@@ -445,18 +510,16 @@ contains
 
 
 
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
+
 
 
   !+----------------------------------------------------------------+
-  !PURPOSE : Reshuffle the Ns Lattice sites into Nindependent one
+  !PURPOSE : Reshuffle the Nlat Lattice sites into Nindependent one
   !given the map indipsites
   !+----------------------------------------------------------------+
   function dv_reshuffled(m_in) result(m_out)
     integer                               :: i
-    real(8), dimension(Ns)           :: m_in
+    real(8), dimension(Nlat)           :: m_in
     real(8), dimension(Nindip)       :: m_out
     do i=1,Nindip
        m_out(i)=m_in(indipsites(i))
@@ -465,7 +528,7 @@ contains
   !
   function zv_reshuffled(m_in) result(m_out)
     integer                               :: i
-    complex(8), dimension(Ns)           :: m_in
+    complex(8), dimension(Nlat)           :: m_in
     complex(8), dimension(Nindip)       :: m_out
     do i=1,Nindip
        m_out(i)=m_in(indipsites(i))
@@ -474,7 +537,7 @@ contains
   !
   function dm_reshuffled(m_in) result(m_out)
     integer                               :: i
-    real(8), dimension(Ns,L)           :: m_in
+    real(8), dimension(Nlat,L)           :: m_in
     real(8), dimension(Nindip,L)       :: m_out
     do i=1,Nindip
        m_out(i,:)=m_in(indipsites(i),:)
@@ -483,18 +546,12 @@ contains
   !
   function zm_reshuffled(m_in) result(m_out)
     integer                               :: i
-    complex(8), dimension(Ns,L)           :: m_in
+    complex(8), dimension(Nlat,L)           :: m_in
     complex(8), dimension(Nindip,L)       :: m_out
     do i=1,Nindip
        m_out(i,:)=m_in(indipsites(i),:)
     enddo
   end function zm_reshuffled
   !
-
-
-
-  !******************************************************************
-  !******************************************************************
-  !******************************************************************
 
 end module RDMFT_FUNX

@@ -1,40 +1,58 @@
 #=========================================================================
 include sfmake.inc
 #=========================================================================
-FC=$(SFMPI)/mpif90
+FC=ifort
+MPIFC=$(SFMPI)/mpif90
 DIREXE=$(HOME)/.bin
 DIR=drivers
+
+
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
 EXE=ahm_matsubara_disorder
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
-OBJS = SOLVER_VARS_GLOBAL.o IPT_SC_MATS.o  IPT_SC_SOPT.o IPT_MATS.o IPT_SOPT.o  SOLVER_INTERFACE.o RDMFT_VARS_GLOBAL.o RDMFT_FUNX.o RDMFT.o
+OBJS = SOLVER_INPUT_VARS.o SOLVER_INTERFACE.o RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_FUNX.o RDMFT.o
 
-ARGS= $(SFLIBS)
-#ARGS=$(SFLIBS_DEB)
-FLAG=$(STD)
-#FLAG=$(OPT)
-#FLAG=$(DEB)
+#=================STANDARD COMPILATION====================================
+all: FLAG=$(STD)
+all: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS)
+all: compile
+
+#================DEBUGGIN COMPILATION=====================================
+debug: FLAG=$(DEB)
+debug: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS_DEB)
+debug:compile
+
+
 
 #=================STANDARD COMPILATION====================================
 compile: version $(OBJS)
-	@echo " ........... compile: optimized ........... "
-	@echo $(VER)
-	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
+	@echo " ..................... compile ........................... "
+	$(MPIFC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
 	@echo " ...................... done .............................. "
+	@echo ""
 	@echo ""
 	@echo "created" $(DIREXE)/$(EXE)_$(BRANCH)
 
+ipt_solver:
+	@make -C IPT_SOLVER/
+
+ed_solver:
+	@make -C ED_SOLVER/
 
 .f90.o:	
-	$(FC) $(FLAG) -c $< $(SFINCLUDE) 
+	$(MPIFC) $(FLAG) -c $< $(SFINCLUDE) -I./IPT_SOLVER -I./ED_SOLVER
 
 
 clean: 
 	@echo 'removing *.mod *.o *~'
 	@rm -fv *.mod *.o *~ revision.inc
+
+all_clean: clean
+	@make -C IPT_SOLVER/ clean
+	@make -C ED_SOLVER/ clean
 
 version:
 	@echo $(VER)

@@ -6,16 +6,21 @@
 ! calling this program many times providing a *different* seed 
 ! +IDUM. The result of each calculation is stored different dir
 ! indexed by the seed itself.
-!AUTHORS  : A.Amaricci, A.Priviter (CNR-IOM)
 !########################################################
 program ahm_matsubara_disorder
   USE RDMFT
+  USE RANDOM,    only:nrand,init_random_number
+  USE ERROR
+  USE TOOLS
+  USE IOTOOLS
+  USE ARRAYS
+  USE STATISTICS
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: fg,sigma
-  real(8),allocatable,dimension(:) :: erandom
+  real(8),allocatable,dimension(:)        :: erandom
   logical                                 :: converged
   real(8)                                 :: r
-  integer                                 :: i,is
+  integer                                 :: i,is,iloop
 
   !START MPI:
   !=====================================================================
@@ -27,8 +32,13 @@ program ahm_matsubara_disorder
 
   !READ INPUT FILES:
   !=====================================================================
-  call read_input("inputIPT.in")
+  call solver_read_input("inputIPT.in")
   call rdmft_read_input("inputRDMFT.in")
+  store_size=1024
+
+  Nlat = Nside**2
+  allocate(nii(Nlat))
+  allocate(dii(Nlat))
 
 
   !BUILD THE LATTICE HAMILTONIAN:
@@ -39,21 +49,26 @@ program ahm_matsubara_disorder
   !ALLOCATE WORKING ARRAYS:
   !=====================================================================
   wmax  =wmax+Wdis
-  allocate(erandom(Ns))
+  allocate(erandom(Nlat))
   allocate(wm(L),tau(0:L))
   wm(:)  = pi/beta*real(2*arange(1,L)-1,8)
   tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
   !
-  allocate(fg(2,Ns,L))
-  allocate(sigma(2,Ns,L))
+  allocate(fg(2,Nlat,L))
+  allocate(sigma(2,Nlat,L))
 
 
   !BUILD RANDOM ENERGIES:
   !=====================================================================
+  if(mpiID==0)then
+     open(10,file="list_idum",access='append')
+     write(10,*)idum
+     close(10)
+  endif
   do i=1,100                     !get rid of few spurious random number in NR
      r=nrand(idum)
   enddo
-  do is=1,Ns
+  do is=1,Nlat
      erandom(is)=(2.d0*nrand(idum)-1.d0)*Wdis/2.d0
   enddo
 
@@ -62,7 +77,7 @@ program ahm_matsubara_disorder
   !==============================================================
   call setup_sc_initial_sigma(sigma)
   iloop=0 ; converged=.false.
-  do while(.not.converged)
+  do while(.not.converged.AND.iloop>nloop)
      iloop=iloop+1
      call start_loop(iloop,nloop,"DMFT-loop")
 
@@ -72,23 +87,15 @@ program ahm_matsubara_disorder
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
      call solve_sc_impurity_matsu_mpi(fg,sigma)
 
-     converged = check_convergence_scalar(dii,eps_error,Nsuccess,nloop,&
-          id=0,file="error.err")
+     converged = check_convergence(dii,dmft_error,Nsuccess,nloop,id=0,file="error.err")
 
      if(nread/=0.d0)call search_mu(converged)
-     if(iloop>=nloop)converged=.true.
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
      call end_loop()
   enddo
 
   deallocate(fg,sigma)
-
-  if(mpiID==0) then 
-     open(10,file="used.inputRDMFT.in")
-     write(10,nml=disorder)
-     close(10)
-  endif
 
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   call MPI_FINALIZE(mpiERR)
@@ -100,11 +107,11 @@ contains
   subroutine print_sc_out(converged)
     integer                         :: i,j,is,row,col
     real(8)                         :: nimp,delta,ccdw
-    real(8),dimension(Ns)           :: cdwii,rii,sii,zii
+    real(8),dimension(Nlat)           :: cdwii,rii,sii,zii
     real(8),dimension(Nside,Nside) :: dij,nij,cij
     real(8),dimension(Nside)        :: grid_x,grid_y
     real(8)                         :: mean,sdev,var,skew,kurt
-    real(8),dimension(2,Ns)         :: data_covariance
+    real(8),dimension(2,Nlat)         :: data_covariance
     real(8),dimension(2,2)          :: covariance_nd
     real(8),dimension(2)            :: data_mean,data_sdev
     logical                         :: converged
@@ -116,10 +123,10 @@ contains
     if(mpiID==0)then
        write(loop,"(I4)")iloop
 
-       nimp = sum(nii)/dble(Ns)
-       delta= sum(dii)/dble(Ns)
+       nimp = sum(nii)/dble(Nlat)
+       delta= sum(dii)/dble(Nlat)
        ccdw = 0.d0
-       do is=1,Ns
+       do is=1,Nlat
           row=irow(is)
           col=icol(is)
           ccdw = ccdw + (-1.d0)**(row+col)*(nii(is)-1.d0)
@@ -135,17 +142,17 @@ contains
        call store_data("deltaVSisite.data",dii)
 
        !
-       call splot("LSigma_iw.data",wm(1:L),sigma(1,1:Ns,1:L))
-       call splot("LSelf_iw.data",wm(1:L),sigma(2,1:Ns,1:L))
+       call splot("LSigma_iw.data",wm(1:L),sigma(1,1:Nlat,1:L))
+       call splot("LSelf_iw.data",wm(1:L),sigma(2,1:Nlat,1:L))
        !
 
        !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
-          call splot("LG_iw.data",wm(1:L),fg(1,1:Ns,1:L))
-          call splot("LF_iw.data",wm(1:L),fg(2,1:Ns,1:L))
+          call splot("LG_iw.data",wm(1:L),fg(1,1:Nlat,1:L))
+          call splot("LF_iw.data",wm(1:L),fg(2,1:Nlat,1:L))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
-          do is=1,Ns
+          do is=1,Nlat
              row=irow(is)
              col=icol(is)
              cdwii(is) = (-1.d0)**(row+col)*(nii(is)-1.d0)
@@ -179,8 +186,8 @@ contains
 
 
           !Plot averaged local functions
-          afg    = sum(fg,dim=2)/real(Ns,8)
-          asigma = sum(sigma,dim=2)/real(Ns,8)
+          afg    = sum(fg,dim=2)/real(Nlat,8)
+          asigma = sum(sigma,dim=2)/real(Nlat,8)
 
           call splot("aSigma_iw.data",wm,asigma(1,:))
           call splot("aSelf_iw.data",wm,asigma(2,:))
@@ -243,27 +250,27 @@ contains
     real(8)               :: naverage,ndelta1
     logical,intent(inout) :: convergence
     if(mpiID==0)then
-       naverage=sum(nii)/dble(Ns)
+       naverage=sum(nii)/dble(Nlat)
        nindex1=nindex
-       ndelta1=ndelta
-       if((naverage >= nread+nerror))then
+       ndelta1=rdmft_ndelta
+       if((naverage >= rdmft_nread+rdmft_nerror))then
           nindex=-1
-       elseif(naverage <= nread-nerror)then
+       elseif(naverage <= rdmft_nread-rdmft_nerror)then
           nindex=1
        else
           nindex=0
        endif
        if(nindex1+nindex==0.AND.nindex/=0)then !avoid loop forth and back
-          ndelta=ndelta1/2.d0
+          rdmft_ndelta=ndelta1/2.d0
        else
-          ndelta=ndelta1
+          rdmft_ndelta=ndelta1
        endif
-       xmu=xmu+real(nindex,8)*ndelta
-       write(*,"(A,f15.12,A,f15.12,A,f15.12,A,f15.12)")" n=",naverage,"/",nread,"| shift=",nindex*ndelta,"| mu=",xmu
-       write(*,"(A,f15.12,A,f15.12)")"Density Error:",abs(naverage-nread),'/',nerror
+       xmu=xmu+real(nindex,8)*rdmft_ndelta
+       write(*,"(A,f15.12,A,f15.12,A,f15.12,A,f15.12)")" n=",naverage,"/",rdmft_nread,"| shift=",nindex*rdmft_ndelta,"| mu=",xmu
+       write(*,"(A,f15.12,A,f15.12)")"Density Error:",abs(naverage-nread),'/',rdmft_nerror
        print*,""
-       if(abs(naverage-nread)>nerror)convergence=.false.
-       call splot("muVSiter.data",iloop,xmu,abs(naverage-nread),append=.true.)
+       if(abs(naverage-rdmft_nread)>rdmft_nerror)convergence=.false.
+       call splot("muVSiter.data",xmu,abs(naverage-rdmft_nread),append=.true.)
     endif
     call MPI_BCAST(xmu,1,MPI_DOUBLE_PRECISION,0,MPI_COMM_WORLD,mpiERR)
   end subroutine search_mu

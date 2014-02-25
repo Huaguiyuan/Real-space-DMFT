@@ -6,7 +6,9 @@
 ! COMMENTS : little bit dirty... but seems to work
 !###############################################################
 module IPT_SC_SOPT
-  USE SOLVER_VARS_GLOBAL
+  USE IPT_VARS_GLOBAL
+  USE FUNCTIONS, only:fermi
+  USE INTEGRATE, only:kronig
   implicit none
   private
 

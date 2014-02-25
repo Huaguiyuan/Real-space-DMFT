@@ -6,7 +6,9 @@
 !     AUTHORS  : Adriano Amaricci
 !###############################################################
 module IPT_SOPT
-  USE SOLVER_VARS_GLOBAL
+  USE IPT_VARS_GLOBAL
+  USE FUNCTIONS, only:fermi
+  USE INTEGRATE, only:kronig
   implicit none
   private
   real(8),dimension(:),allocatable    :: A0m,A0p,P1,P2
