@@ -11,11 +11,8 @@ MODULE ED_VARS_GLOBAL
   !Ns   = # of levels per spin
   !Ntot = 2*Ns = total #  of levels
   !NN   = 2**Ntot = 2**(2Ns) max size of the Hilbert space
-  !Nbath=# of bath sites (per orbital or not depending on bath_type)
-  !Norb =# of impurity orbitals
   !Nbo  =# number of bath sites (all sites - impurity sites)
   !Nsect=# of sectors
-  !Nspin=# spin degeneracy (max 2)
   !=========================================================
   integer                                     :: Ns,Ntot,NN
   integer                                     :: Nsect
@@ -24,8 +21,6 @@ MODULE ED_VARS_GLOBAL
 
   !local part of the Hamiltonian
   !=========================================================
-  real(8),dimension(:,:,:,:),allocatable      :: reHloc         !local hamiltonian, real part 
-  real(8),dimension(:,:,:,:),allocatable      :: imHloc         !local hamiltonian, imag part
   complex(8),dimension(:,:,:,:),allocatable   :: Hloc           !local hamiltonian
 
 
@@ -68,6 +63,6 @@ MODULE ED_VARS_GLOBAL
 
   !Density and double occupancy
   !=========================================================
-  real(8),dimension(:),allocatable            ::  nimp,dimp
+  real(8),dimension(:),allocatable            ::  ed_dens,ed_docc,ed_phisc
 
 END MODULE ED_VARS_GLOBAL

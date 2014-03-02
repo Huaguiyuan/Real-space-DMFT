@@ -7,6 +7,7 @@
 !###############################################################
 module IPT_SC_SOPT
   USE IPT_VARS_GLOBAL
+  USE COMMON_VARS
   USE FUNCTIONS, only:fermi
   USE INTEGRATE, only:kronig
   implicit none

@@ -94,7 +94,7 @@ contains
        !
        if(finiteT)then
           do i=1,Neigen
-             call es_add_state(state_list,eig_values(i),eig_basis(1:dim,i),isector,size=lanc_nstates)
+             call es_add_state(state_list,eig_values(i),eig_basis(1:dim,i),isector,size=lanc_nstates_total)
           enddo
        else
           enemin = eig_values(1)
@@ -229,8 +229,8 @@ contains
        Egs = state_list%emin
        Ec  = state_list%emax
        if(exp(-beta*(Ec-Egs)) > cutoff)then
-          lanc_nstates=lanc_nstates + 2!*lanc_nincrement
-          if(mpiID==0)write(*,"(A,I4)")"Increasing lanc_nstates+2:",lanc_nstates
+          lanc_nstates_total=lanc_nstates_total + 2!*lanc_nincrement
+          if(mpiID==0)write(*,"(A,I4)")"Increasing lanc_nstates_total+2:",lanc_nstates_total
        endif
     endif
   end subroutine lanc_ed_diag_d
@@ -296,7 +296,7 @@ contains
        !
        if(finiteT)then
           do i=1,Neigen
-             call es_add_state(state_list,eig_values(i),eig_basis(1:dim,i),isector,size=lanc_nstates)
+             call es_add_state(state_list,eig_values(i),eig_basis(1:dim,i),isector,size=lanc_nstates_total)
           enddo
        else
           enemin = eig_values(1)
@@ -424,8 +424,8 @@ contains
        Egs = state_list%emin
        Ec  = state_list%emax
        if(exp(-beta*(Ec-Egs)) > cutoff)then
-          lanc_nstates=lanc_nstates + 2!*lanc_nincrement
-          if(mpiID==0)write(*,"(A,I4)")"Increasing lanc_nstates+2:",lanc_nstates
+          lanc_nstates_total=lanc_nstates_total + 2!*lanc_nincrement
+          if(mpiID==0)write(*,"(A,I4)")"Increasing lanc_nstates_total+2:",lanc_nstates_total
        endif
     endif
   end subroutine lanc_ed_diag_c
