@@ -1,11 +1,10 @@
+FC=$(SFMPI)/mpif90
 #=========================================================================
 include sfmake.inc
 #=========================================================================
-FC=ifort
-MPIFC=$(SFMPI)/mpif90
+
 DIREXE=$(HOME)/.bin
 DIR=drivers
-
 
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
@@ -13,7 +12,7 @@ EXE=ahm_matsubara_disorder
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
-OBJS = SOLVER_INPUT_VARS.o SOLVER_INTERFACE.o RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_FUNX.o RDMFT.o
+OBJS = RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_AUX_FUNX.o RDMFT_WRAP_IPT.o RDMFT.o
 
 #=================STANDARD COMPILATION====================================
 all: FLAG=$(STD)
@@ -23,14 +22,14 @@ all: compile
 #================DEBUGGIN COMPILATION=====================================
 debug: FLAG=$(DEB)
 debug: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS_DEB)
-debug:compile
+debug: compile
 
 
 
 #=================STANDARD COMPILATION====================================
 compile: version $(OBJS)
 	@echo " ..................... compile ........................... "
-	$(MPIFC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
+	$(FC) $(FLAG) $(OBJS) $(DIR)/$(EXE).f90 -o $(DIREXE)/$(EXE)_$(BRANCH) $(ARGS)
 	@echo " ...................... done .............................. "
 	@echo ""
 	@echo ""
@@ -43,7 +42,7 @@ ed_solver:
 	@make -C ED_SOLVER/
 
 .f90.o:	
-	$(MPIFC) $(FLAG) -c $< $(SFINCLUDE) -I./IPT_SOLVER -I./ED_SOLVER
+	$(FC) $(FLAG) -c $< $(SFINCLUDE) -I./IPT_SOLVER -I./ED_SOLVER
 
 
 clean: 

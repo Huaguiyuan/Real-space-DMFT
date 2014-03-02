@@ -1,9 +1,9 @@
 #=========================================================================
 include sfmake.inc
 #=========================================================================
-FC=ifort
 
-OBJS = SOLVER_INPUT_VARS  IPT_VARS_GLOBAL.o IPT_MATS.o   IPT_SOPT.o IPT_SC_SOPT.o DMFT_IPT.o
+
+OBJS = RDMFT_INPUT_VARS  IPT_VARS_GLOBAL.o IPT_MATS.o   IPT_SOPT.o IPT_SC_SOPT.o DMFT_IPT.o
 
 #=================STANDARD COMPILATION====================================
 all: FLAG=$(STD)
@@ -38,10 +38,10 @@ libipt_rdmft_deb.a:  $(OBJS)
 
 
 .f90.o:	
-	$(FC) $(FLAG) -c $< $(SFINCLUDE) $(SFLIB) #$(MOPT)../ 
-SOLVER_INPUT_VARS:
-	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(SFLIB) #$(MOPT)../ 
-	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(SFLIB) $(MOPT)../ 
+	$(FC) $(FLAG) -c $< $(SFINCLUDE)
+RDMFT_INPUT_VARS:
+	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE)  
+	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(MOPT)../ 
 
 clean: 
 	@echo 'removing *.mod *.o *~'

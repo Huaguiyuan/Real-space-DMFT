@@ -32,7 +32,7 @@ program ahm_matsubara_disorder
 
   !READ INPUT FILES:
   !=====================================================================
-  call solver_read_input("inputIPT.in")
+  ! call solver_read_input("inputIPT.in")
   call rdmft_read_input("inputRDMFT.in")
   store_size=1024
 
@@ -50,12 +50,11 @@ program ahm_matsubara_disorder
   !=====================================================================
   wmax  =wmax+Wdis
   allocate(erandom(Nlat))
-  allocate(wm(L),tau(0:L))
-  wm(:)  = pi/beta*real(2*arange(1,L)-1,8)
-  tau(0:)= linspace(0.d0,beta,L+1,mesh=dtau)
+  allocate(wm(Lmats))
+  wm(:)  = pi/beta*real(2*arange(1,Lmats)-1,8)
   !
-  allocate(fg(2,Nlat,L))
-  allocate(sigma(2,Nlat,L))
+  allocate(fg(2,Nlat,Lmats))
+  allocate(sigma(2,Nlat,Lmats))
 
 
   !BUILD RANDOM ENERGIES:
@@ -82,10 +81,10 @@ program ahm_matsubara_disorder
      call start_loop(iloop,nloop,"DMFT-loop")
 
      !SOLVE G_II (GLOCAL)
-     call get_sc_gloc_matsu_mpi(erandom,sigma,fg)      
+     call get_sc_gloc_mats(erandom,sigma,fg)      
 
      !SOLVE IMPURITY MODEL, \FORALL LATTICE SITES:
-     call solve_sc_impurity_matsu_mpi(fg,sigma)
+     call ipt_solve_sc_impurity_mats(fg,sigma)
 
      converged = check_convergence(dii,dmft_error,Nsuccess,nloop,id=0,file="error.err")
 
@@ -115,8 +114,8 @@ contains
     real(8),dimension(2,2)          :: covariance_nd
     real(8),dimension(2)            :: data_mean,data_sdev
     logical                         :: converged
-    real(8),dimension(2,0:L)        :: fgt
-    complex(8),dimension(2,L)       :: afg,asigma
+    real(8),dimension(2,0:Lmats)        :: fgt
+    complex(8),dimension(2,Lmats)       :: afg,asigma
     character(len=4)                :: loop
 
 
@@ -142,14 +141,14 @@ contains
        call store_data("deltaVSisite.data",dii)
 
        !
-       call splot("LSigma_iw.data",wm(1:L),sigma(1,1:Nlat,1:L))
-       call splot("LSelf_iw.data",wm(1:L),sigma(2,1:Nlat,1:L))
+       call splot("LSigma_iw.data",wm(1:Lmats),sigma(1,1:Nlat,1:Lmats))
+       call splot("LSelf_iw.data",wm(1:Lmats),sigma(2,1:Nlat,1:Lmats))
        !
 
        !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
-          call splot("LG_iw.data",wm(1:L),fg(1,1:Nlat,1:L))
-          call splot("LF_iw.data",wm(1:L),fg(2,1:Nlat,1:L))
+          call splot("LG_iw.data",wm(1:Lmats),fg(1,1:Nlat,1:Lmats))
+          call splot("LF_iw.data",wm(1:Lmats),fg(2,1:Nlat,1:Lmats))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Nlat

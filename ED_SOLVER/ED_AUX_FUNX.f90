@@ -3,6 +3,7 @@
 !AUTHORS  : Adriano Amaricci
 !########################################################################
 MODULE ED_AUX_FUNX
+  USE COMMON_VARS, only:mpiID
   USE TIMER
   USE IOTOOLS, only:free_unit
   USE ED_INPUT_VARS
@@ -55,9 +56,11 @@ contains
   !PURPOSE  : Init calculation
   !+------------------------------------------------------------------+
   subroutine init_ed_structure(Hunit)
-    character(len=64)         :: Hunit
-    logical                   :: control
-    integer                   :: i,NP,nup,ndw,iorb,jorb,ispin,jspin
+    character(len=64)                        :: Hunit
+    logical                                  :: control
+    real(8),dimension(Nspin,Nspin,Norb,Norb) :: reHloc         !local hamiltonian, real part 
+    real(8),dimension(Nspin,Nspin,Norb,Norb) :: imHloc         !local hamiltonian, imag part
+    integer                                  :: i,NP,nup,ndw,iorb,jorb,ispin,jspin
     !
     !Norb=# of impurity orbitals
     !Nbath=# of bath sites (per orbital or not depending on bath_type)
@@ -96,14 +99,13 @@ contains
        write(LOGfile,*)"--------------------------------------------"
     endif
 
-    allocate(reHloc(Nspin,Nspin,Norb,Norb))
-    allocate(imHloc(Nspin,Nspin,Norb,Norb))
     allocate(Hloc(Nspin,Nspin,Norb,Norb))
     reHloc = 0.d0
     imHloc = 0.d0
 
     inquire(file=Hunit,exist=control)    
     if(control)then
+       if(mpiID==0)write(LOGfile,*)"Reading Hloc from file: "//Hunit
        open(50,file=Hunit,status='old')
        do ispin=1,Nspin
           do iorb=1,Norb
@@ -116,34 +118,37 @@ contains
           enddo
        enddo
        close(50)
+       Hloc = dcmplx(reHloc,imHloc)
     else
        if(mpiID==0)then
-          print*,"Can not find Uloc/Hloc file"
-          print*,"Printing a default version in default."//Hunit
-          open(50,file="default."//Hunit)
-          do ispin=1,Nspin
-             do iorb=1,Norb
-                write(50,"(90F12.6)")((reHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
-             enddo
-          enddo
-          write(50,*)""
-          do ispin=1,Nspin
-             do iorb=1,Norb
-                write(50,"(90F12.6)")((imHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
-             enddo
-          enddo
-          write(50,*)""
-          close(50)
+          write(LOGfile,*)"Hloc file not found."
+          write(LOGfile,*)"Hloc should be defined elsewhere..."
        endif
-       stop
+       !    if(mpiID==0)then
+       !       print*,"Can not find Uloc/Hloc file"
+       !       print*,"Printing a default version in default."//Hunit
+       !       open(50,file="default."//Hunit)
+       !       do ispin=1,Nspin
+       !          do iorb=1,Norb
+       !             write(50,"(90F12.6)")((reHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
+       !          enddo
+       !       enddo
+       !       write(50,*)""
+       !       do ispin=1,Nspin
+       !          do iorb=1,Norb
+       !             write(50,"(90F12.6)")((imHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
+       !          enddo
+       !       enddo
+       !       write(50,*)""
+       !       close(50)
+       !    endif
+       !    stop
     endif
-
-    hloc = dcmplx(reHloc,imHloc)
-
     if(mpiID==0)then
        write(LOGfile,"(A)")"H_local:"
        call print_Hloc(Hloc)
     endif
+
 
 
     allocate(impIndex(Norb,2))
@@ -161,27 +166,27 @@ contains
 
     !check finiteT
     finiteT=.true.              !assume doing finite T per default
-    if(lanc_nstates==1)then     !is you only want to keep 1 state
-       lanc_neigen=1            !set the required eigen per sector to 1 see later for neigen_sector
+    if(lanc_nstates_total==1)then     !is you only want to keep 1 state
+       lanc_nstates_sector=1            !set the required eigen per sector to 1 see later for neigen_sector
        finiteT=.false.          !set to do zero temperature calculations
        if(mpiID==0)then
-          write(LOGfile,"(A)")"Required Lanc_Nstates=1 => set T=0 calculation"
+          write(LOGfile,"(A)")"Required Lanc_nstates_total=1 => set T=0 calculation"
        endif
     endif
 
 
-    !check whether lanc_neigen and lanc_states are even (we do want to keep doublet among states)
+    !check whether lanc_nstates_sector and lanc_states are even (we do want to keep doublet among states)
     if(finiteT)then
-       if(mod(lanc_neigen,2)/=0)then
-          lanc_neigen=lanc_neigen+1
+       if(mod(lanc_nstates_sector,2)/=0)then
+          lanc_nstates_sector=lanc_nstates_sector+1
           if(mpiID==0)then
-             write(LOGfile,"(A,I10)")"Increased Lanc_Neigen:",lanc_neigen
+             write(LOGfile,"(A,I10)")"Increased Lanc_nstates_sector:",lanc_nstates_sector
           endif
        endif
-       if(mod(lanc_nstates,2)/=0)then
-          lanc_nstates=lanc_nstates+1
+       if(mod(lanc_nstates_total,2)/=0)then
+          lanc_nstates_total=lanc_nstates_total+1
           if(mpiID==0)then
-             write(LOGfile,"(A,I10)")"Increased Lanc_Nstates:",lanc_nstates
+             write(LOGfile,"(A,I10)")"Increased Lanc_nstates_total:",lanc_nstates_total
           endif
        endif
 
@@ -194,7 +199,7 @@ contains
     endif
 
     !Some check:
-    if(Nfit>NL)Nfit=NL
+    if(Lfit>Lmats)Lfit=Lmats
     if(Nspin>2)stop "Nspin > 2 ERROR. ask developer or develop your own on separate branch"
     if(Norb>3)stop "Norb > 3 ERROR. ask developer or develop your own on separate branch" 
     if(nerr < dmft_error) nerr=dmft_error
@@ -213,22 +218,24 @@ contains
     endif
 
     !allocate functions
-    allocate(impSmats(Nspin,Nspin,Norb,Norb,NL))
-    allocate(impSreal(Nspin,Nspin,Norb,Norb,Nw))
+    allocate(impSmats(Nspin,Nspin,Norb,Norb,Lmats))
+    allocate(impSreal(Nspin,Nspin,Norb,Norb,Lreal))
     if(ed_supercond)then
-       allocate(impSAmats(Nspin,Nspin,Norb,Norb,NL))
-       allocate(impSAreal(Nspin,Nspin,Norb,Norb,Nw))
+       allocate(impSAmats(Nspin,Nspin,Norb,Norb,Lmats))
+       allocate(impSAreal(Nspin,Nspin,Norb,Norb,Lreal))
     endif
 
     !allocate observables
-    allocate(nimp(Norb),dimp(Norb))
+    allocate(ed_dens(Norb),ed_docc(Norb))
+    if(ed_supercond)allocate(ed_phisc(Norb))
   end subroutine init_ed_structure
 
 
 
 
 
-  subroutine print_Hloc(hloc)
+  subroutine print_Hloc(hloc,unit)
+    integer,optional                            :: unit
     integer                                     :: iorb,jorb,ispin,jspin
     complex(8),dimension(Nspin,Nspin,Norb,Norb) :: hloc
     do ispin=1,Nspin
@@ -241,6 +248,20 @@ contains
                jspin=1,Nspin)
        enddo
     enddo
+    if(present(unit))then
+       do ispin=1,Nspin
+          do iorb=1,Norb
+             write(unit,"(90F12.6)")((dreal(Hloc(ispin,jspin,iorb,jorb)),jorb=1,Norb),jspin=1,Nspin)
+          enddo
+       enddo
+       write(unit,*)""
+       do ispin=1,Nspin
+          do iorb=1,Norb
+             write(unit,"(90F12.6)")((dimag(Hloc(ispin,jspin,iorb,jorb)),jorb=1,Norb),jspin=1,Nspin)
+          enddo
+       enddo
+       write(unit,*)""
+    endif
   end subroutine print_Hloc
 
 
@@ -267,7 +288,7 @@ contains
           getndw(isector)=ndw
           dim = get_sector_dimension(nup,ndw)
           getdim(isector)=dim
-          neigen_sector(isector) = min(dim,lanc_neigen)   !init every sector to required eigenstates
+          neigen_sector(isector) = min(dim,lanc_nstates_sector)   !init every sector to required eigenstates
        enddo
     enddo
     call stop_timer
@@ -337,7 +358,7 @@ contains
        getsz(isector)=isz
        dim = get_sc_sector_dimension(isz)
        getdim(isector)=dim
-       neigen_sector(isector) = min(dim,lanc_neigen)   !init every sector to required eigenstates
+       neigen_sector(isector) = min(dim,lanc_nstates_sector)   !init every sector to required eigenstates
        !<DEBUG
        allocate(imap(dim))
        call build_sector(isector,imap,dim2)
