@@ -5,7 +5,7 @@
 MODULE ED_AUX_FUNX
   USE COMMON_VARS, only:mpiID
   USE TIMER
-  USE IOTOOLS, only:free_unit
+  USE IOTOOLS, only:free_unit,reg
   USE ED_INPUT_VARS
   USE ED_VARS_GLOBAL
   implicit none
@@ -27,10 +27,7 @@ MODULE ED_AUX_FUNX
   public :: c,cdg
   public :: binary_search
 
-
 contains
-
-
 
 
 #ifdef _MPI
@@ -118,32 +115,13 @@ contains
           enddo
        enddo
        close(50)
-       Hloc = dcmplx(reHloc,imHloc)
     else
        if(mpiID==0)then
           write(LOGfile,*)"Hloc file not found."
           write(LOGfile,*)"Hloc should be defined elsewhere..."
        endif
-       !    if(mpiID==0)then
-       !       print*,"Can not find Uloc/Hloc file"
-       !       print*,"Printing a default version in default."//Hunit
-       !       open(50,file="default."//Hunit)
-       !       do ispin=1,Nspin
-       !          do iorb=1,Norb
-       !             write(50,"(90F12.6)")((reHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
-       !          enddo
-       !       enddo
-       !       write(50,*)""
-       !       do ispin=1,Nspin
-       !          do iorb=1,Norb
-       !             write(50,"(90F12.6)")((imHloc(ispin,jspin,iorb,jorb),jorb=1,Norb),jspin=1,Nspin)
-       !          enddo
-       !       enddo
-       !       write(50,*)""
-       !       close(50)
-       !    endif
-       !    stop
     endif
+    Hloc = dcmplx(reHloc,imHloc)
     if(mpiID==0)then
        write(LOGfile,"(A)")"H_local:"
        call print_Hloc(Hloc)
@@ -418,6 +396,7 @@ contains
        getCDGsector(2,isector)=jsector
     enddo
   end subroutine setup_pointers_sc
+
 
 
 
@@ -715,7 +694,7 @@ contains
     write(LOGfile,"(A,f15.9)")"xmu  = ",xmu
     write(LOGfile,"(A,ES16.9,A,ES16.9)")"dn   = ",ndiff,"/",nth
     unit=free_unit()
-    open(unit,file="search_mu_iteration.ed",position="append")
+    open(unit,file="search_mu_iteration"//reg(ed_file_suffix)//".ed",position="append")
     write(unit,*)xmu,ntmp,ndiff
     close(unit)
     !
@@ -801,7 +780,5 @@ contains
   !   write(10,*)ndelta,nindex,xmu
   !   close(10)
   ! end subroutine search_mu
-
-
 
 END MODULE ED_AUX_FUNX

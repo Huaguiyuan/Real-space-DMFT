@@ -2,14 +2,6 @@
 ! PROGRAM  : RDMFT_FUNX
 ! PURPOSE  : Contains the main function performin RDMFT calculation
 ! for a given solver.
-! main routines:
-! - setup_<phase>_initial_sigma: setup the initial sigma to 
-! start the R-DFMT calculation
-! - get_<phase>_gloc_<formlism>_mpi: construct the local GF starting from 
-! sigma function and tight-binding Hamiltonian via parallel matrix inversions
-! - solve_<phase>_impurity_<formalism>_mpi: parallel solution of the 
-! lattice sites impurity problems. This contains the call to specific
-! solver routine. up to 20/08/2013 it contains only IPT interface.
 !###############################################################
 module RDMFT_AUX_FUNX
   USE RDMFT_INPUT_VARS
@@ -17,6 +9,7 @@ module RDMFT_AUX_FUNX
   USE TIMER
   USE IOTOOLS,   only:reg,sread
   USE MATRIX,    only:matrix_inverse,matrix_inverse_sym
+  implicit none
   private
 
   public :: get_gloc_mats
@@ -51,8 +44,8 @@ contains
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lmats),sigma(Nlat,Lmats)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lmats)
-    integer    :: i
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    integer    :: i,is
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     gf_tmp=zero
     fg=zero
@@ -78,8 +71,8 @@ contains
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lreal),sigma(Nlat,Lreal)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lreal)
-    integer    :: i
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    integer    :: i,is
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     gf_tmp=zero 
     fg=zero
@@ -106,7 +99,7 @@ contains
     complex(8) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats)
     integer    :: i,is
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     fg=zero
     gf_tmp=zero
@@ -115,10 +108,10 @@ contains
        Gloc(1:Nlat,1:Nlat)          = -H0
        Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
        do is=1,Nlat
-          Gloc(is,is)      =  xi*wm(i)-sigma(1,is,i)        - elocal(is) + xmu
-          Gloc(Nlat+is,Nlat+is)=  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
-          Gloc(is,Nlat+is)   = -sigma(2,is,i)
-          Gloc(Nlat+is,is)   = -sigma(2,is,i)!==sigma(2,is,L+1-i) a simmetry in Matsubara!
+          Gloc(is,is)           =  xi*wm(i)-sigma(1,is,i)        - elocal(is) + xmu
+          Gloc(Nlat+is,Nlat+is) =  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
+          Gloc(is,Nlat+is)      = -sigma(2,is,i)
+          Gloc(Nlat+is,is)      = -sigma(2,is,i)                                    !==sigma(2,is,L+1-i) a simmetry in Matsubara!
        enddo
        call matrix_inverse_sym(Gloc)
        forall(is=1:Nlat)
@@ -139,7 +132,7 @@ contains
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2
     integer    :: i,is
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     fg=zero ; gf_tmp=zero
     do i=1+mpiID,Lreal,mpiSIZE
@@ -241,10 +234,10 @@ contains
        if(.not.check1)inquire(file=reg(fileSig)//".gz",exist=check1)
        check=check1
        if(check)then
-          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          if(mpiID==0)write(LOGfile,*)"Reading Self-energy from file:"
           call sread(reg(fileSig),foo_ome,sigma(:,:))
        else
-          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
+          if(mpiID==0)write(LOGfile,*)"Using Hartree-Fock-Bogoliubov self-energy"
           sigma(:,:)=zero
        endif
     endif
@@ -266,11 +259,11 @@ contains
        if(.not.check2)inquire(file=reg(fileSelf)//".gz",exist=check2)
        check=check1.AND.check2
        if(check)then
-          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          if(mpiID==0)write(LOGfile,*)"Reading Self-energy from file:"
           call sread(reg(fileSig), foo_ome,sigma(1,:,:))
           call sread(reg(fileSelf),foo_ome,sigma(2,:,:))
        else
-          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
+          if(mpiID==0)write(LOGfile,*)"Using Hartree-Fock-Bogoliubov self-energy"
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif

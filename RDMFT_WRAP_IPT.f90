@@ -14,6 +14,7 @@ module RDMFT_WRAP_IPT
   USE FUNCTIONS, only:fermi
   !Impurity solver interface
   USE DMFT_IPT
+  implicit none
   private
 
 
@@ -32,7 +33,7 @@ contains
     complex(8) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
     real(8)    :: nii_tmp(Nlat),dii_tmp(Nlat)
     complex(8) :: sigma_tmp(2,Nlat,Lmats)
-    if(mpiID==0)write(LOGunit,*)"Solve impurity:"
+    if(mpiID==0)write(LOGfile,*)"Solve impurity:"
     call start_timer
     sigma_tmp=zero
     nii_tmp  =0.d0
@@ -52,7 +53,7 @@ contains
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     real(8)    :: nii_tmp(Nlat),dii_tmp(Nlat)
     complex(8) :: sigma_tmp(2,Nlat,Lreal)
-    if(mpiID==0)write(LOGunit,*)"Solve impurity:"
+    if(mpiID==0)write(LOGfile,*)"Solve impurity:"
     call start_timer
     sigma_tmp=zero
     nii_tmp  =0.d0
@@ -89,8 +90,8 @@ contains
     if(.not.allocated(Wold))allocate(Wold(2,Nlat,Lmats))
     if(mix_type==1)Wold(:,is,:) = sigma(:,is,:)
     !
-    call fftgf_iw2tau(fg(1,is,:),fgt(1,0:L),beta)
-    call fftgf_iw2tau(fg(2,is,:),fgt(2,0:L),beta,notail=.true.)
+    call fftgf_iw2tau(fg(1,is,:),fgt(1,0:Lmats),beta)
+    call fftgf_iw2tau(fg(2,is,:),fgt(2,0:Lmats),beta,notail=.true.)
     n = -fgt(1,Lmats) ; delta = -u*fgt(2,Lmats)
     !
     ntmp=2.d0*n; dtmp=delta
@@ -103,14 +104,14 @@ contains
     calG(1,:) = conjg(fg0(1,:))/det
     calG(2,:) = fg0(2,:)/det
     !
-    if(mix_type==0)then
-       if(iloop>1)calG(:,:) =  weight*calG(:,:) + (1.d0-weight)*Wold(:,is,:)
-       Wold(:,is,:)  =  calG(:,:)
-    endif
+    ! if(mix_type==0)then
+    !    if(iloop>1)calG(:,:) =  weight*calG(:,:) + (1.d0-weight)*Wold(:,is,:)
+    !    Wold(:,is,:)  =  calG(:,:)
+    ! endif
     !
     call fftgf_iw2tau(calG(1,:),fg0t(1,:),beta)
     call fftgf_iw2tau(calG(2,:),fg0t(2,:),beta,notail=.true.)
-    n0=-fg0t(1,L) ; delta0= -u*fg0t(2,L)
+    n0=-fg0t(1,Lmats) ; delta0= -u*fg0t(2,Lmats)
     write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
     !
     sig_tmp(:,:) =  solve_mpt_sc_matsubara(calG,n,n0,delta,delta0)
@@ -127,6 +128,7 @@ contains
     complex(8),dimension(:,:,:),allocatable,save  :: Wold
     complex(8),dimension(2,1:Lreal)               :: calG,fg0
     real(8)                                       :: n,n0,delta,delta0
+    integer                                       :: i
     if(.not.allocated(Wold))allocate(Wold(2,Nlat,1:Lreal))
     if(mix_type==1)Wold(:,is,:) = sigma(:,is,:)
     !
@@ -147,16 +149,16 @@ contains
        calG(2,i)=  conjg(fg0(2,Lreal+1-i))/det
     end do
     !
-    if(mix_type==0)then
-       if(iloop>1)calG(:,:) =  weight*calG(:,:) + (1.d0-weight)*Wold(:,is,:)
-       Wold(:,is,:)  =  calG(:,:)
-    endif
+    ! if(mix_type==0)then
+    !    if(iloop>1)calG(:,:) =  weight*calG(:,:) + (1.d0-weight)*Wold(:,is,:)
+    !    Wold(:,is,:)  =  calG(:,:)
+    ! endif
     !
     n0    = -sum(dimag(calG(1,:))*fermi(wr,beta))*fmesh/pi
     delta0= -u*sum(dimag(calG(2,:))*fermi(wr,beta))*fmesh/pi
     write(750,"(2I4,4(f16.12))",advance="yes")mpiID,is,n,n0,delta,delta0
     !
-    sig_tmp(:,:)  =  solve_mpt_sc_sopt(calG,wr,n,n0,delta,delta0,L)
+    sig_tmp(:,:)  =  solve_mpt_sc_sopt(calG,wr,n,n0,delta,delta0,Lreal)
     if(mix_type==1)sig_tmp(:,:) =  weight*sig_tmp(:,:) + (1.d0-weight)*Wold(:,is,:)
     !
   end subroutine ipt_solve_per_site_real

@@ -9,7 +9,7 @@ MODULE ED_OBSERVABLES
   USE ED_AUX_FUNX
   implicit none
   private
-
+  
   public                             :: ed_getobs
 
   logical,save                       :: iolegend=.true.
@@ -115,7 +115,7 @@ contains
              if(associated(gscvec))nullify(gscvec)
              deallocate(Hmap)
           enddo
-
+          !
           if(ed_supercond) then
              if(.not.allocated(phiscimp)) allocate(phiscimp(Norb))
              phiscimp = 0.d0
@@ -126,20 +126,25 @@ contains
                    if(finiteT)numstates=state_list%size
                    !   
                    do izero=1,numstates
-                      isect0     =  es_return_sector(state_list,izero)
-                      ei    =  es_return_energy(state_list,izero)
-                      gsvec  => es_return_vector(state_list,izero)
-                      norm0=sqrt(dot_product(gsvec,gsvec))
+                      !
+                      isect0 = es_return_sector(state_list,izero)
+                      Ei     = es_return_energy(state_list,izero)
+                      dim0   = getdim(isect0)
+                      if(ed_type=='d')then
+                         gsvec  => es_return_vector(state_list,izero)
+                         norm0=sqrt(dot_product(gsvec,gsvec))
+                      elseif(ed_type=='c')then
+                         gscvec  => es_return_cvector(state_list,izero)
+                         norm0=sqrt(dot_product(gscvec,gscvec))
+                      endif
                       if(abs(norm0-1.d0)>1.d-9)then
                          write(LOGfile,*) "GS : "//reg(txtfy(izero))//"is not normalized:"//txtfy(norm0)
                          stop
                       endif
                       peso = 1.d0 ; if(finiteT)peso=exp(-beta*(Ei-Egs))
                       peso = peso/zeta_function
-                      dim0  = getdim(isect0)
                       allocate(Hmap(dim0))
                       call build_sector(isect0,Hmap)
-
                       !APPLY CDG_UP + C_DW
                       isz0 = getsz(isect0)
                       if(isz0<Ns)then
@@ -248,7 +253,7 @@ contains
           if(ed_supercond)ed_phisc(iorb)=phiscimp(iorb)
        enddo
        !
-       deallocate(nupimp,ndwimp,magimp,sz2imp,n2imp)
+       deallocate(nimp,dimp,nupimp,ndwimp,magimp,sz2imp,n2imp)
        deallocate(simp,zimp)
        if(ed_supercond)deallocate(phiscimp)
     endif
@@ -288,7 +293,7 @@ contains
   subroutine write_legend()
     integer :: unit,iorb,jorb,ispin
     unit = free_unit()
-    open(unit,file="columns_info.ed")
+    open(unit,file="columns_info"//reg(ed_file_suffix)//".ed")
     if(.not.ed_supercond)then
        write(unit,"(A1,1A7,90(A10,5X))")"#","loop","xmu",&
             (reg(txtfy(2+iorb))//"nimp_"//reg(txtfy(iorb)),iorb=1,Norb),&
@@ -329,7 +334,7 @@ contains
     integer :: unit,flast
     integer :: iorb,jorb,ispin
     unit = free_unit()
-    open(unit,file="observables_all.ed",position='append')
+    open(unit,file="observables_all"//reg(ed_file_suffix)//".ed",position='append')
     if(.not.ed_supercond)then
        write(unit,"(I7,90F15.9)")loop,xmu,&
             (nimp(iorb),iorb=1,Norb),&
@@ -357,9 +362,8 @@ contains
             ((simp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin)
     endif
     close(unit)         
-
     unit = free_unit()
-    open(unit,file="observables_last.ed")
+    open(unit,file="observables_last"//reg(ed_file_suffix)//".ed")
     if(.not.ed_supercond)then
        write(unit,"(I7,90F15.9)")loop,xmu,&
             (nimp(iorb),iorb=1,Norb),&

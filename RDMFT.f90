@@ -3,4 +3,6 @@ module RDMFT
   USE RDMFT_VARS_GLOBAL
   USE RDMFT_AUX_FUNX
   USE RDMFT_WRAP_IPT
+  USE RDMFT_WRAP_ED
+  implicit none
 end module RDMFT
