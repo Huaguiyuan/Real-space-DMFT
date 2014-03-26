@@ -8,7 +8,8 @@ DIR=drivers
 
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
-EXE=ed_ahm_squareRDMFT
+#EXE=ed_ahm_squareRDMFT
+EXE=ed_ahm_slabRDMFT
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 

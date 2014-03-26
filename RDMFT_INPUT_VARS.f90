@@ -26,6 +26,7 @@ module RDMFT_INPUT_VARS
   character(len=64) :: fileSig,fileSelf !restart files
 
 
+
   !SOLVER VARIABLES
   !=========================================================
   integer              :: Nbath               !Nbath=# of bath sites (per orbital or not depending on bath_type)
@@ -113,6 +114,7 @@ contains
     call parse_input_variable(pbcflag,"PBCFLAG",INPUTunit,default=.true.)
     call parse_input_variable(mix_type,"MIX_TYPE",INPUTunit,default=0)
     call parse_input_variable(idum,"IDUM",INPUTunit,default=1234567)
+
 
 
     !SOLVER INPUT
