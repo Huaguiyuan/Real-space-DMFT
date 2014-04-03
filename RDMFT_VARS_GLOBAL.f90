@@ -29,7 +29,7 @@ module RDMFT_VARS_GLOBAL
 
   !Local density and order parameter profiles:
   !=========================================================
-  real(8),dimension(:),allocatable    :: nii,dii,gap_ii
+  real(8),dimension(:),allocatable    :: nii,dii,pii,gap_ii
   complex(8),dimension(:),allocatable :: cdii
   logical                             :: densfixed
 

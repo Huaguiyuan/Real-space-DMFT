@@ -2,14 +2,6 @@
 ! PROGRAM  : RDMFT_FUNX
 ! PURPOSE  : Contains the main function performin RDMFT calculation
 ! for a given solver.
-! main routines:
-! - setup_<phase>_initial_sigma: setup the initial sigma to 
-! start the R-DFMT calculation
-! - get_<phase>_gloc_<formlism>_mpi: construct the local GF starting from 
-! sigma function and tight-binding Hamiltonian via parallel matrix inversions
-! - solve_<phase>_impurity_<formalism>_mpi: parallel solution of the 
-! lattice sites impurity problems. This contains the call to specific
-! solver routine. up to 20/08/2013 it contains only IPT interface.
 !###############################################################
 module RDMFT_AUX_FUNX
   USE RDMFT_INPUT_VARS
@@ -17,6 +9,7 @@ module RDMFT_AUX_FUNX
   USE TIMER
   USE IOTOOLS,   only:reg,sread
   USE MATRIX,    only:matrix_inverse,matrix_inverse_sym
+  implicit none
   private
 
   public :: get_gloc_mats
@@ -25,6 +18,7 @@ module RDMFT_AUX_FUNX
   public :: get_sc_gloc_real
 
   public :: get_tb_hamiltonian  !now only 2D square
+  public :: get_slab_hamiltonian !to be overloaded with get_tb_hamiltonian !!!
   public :: setup_initial_sigma, setup_sc_initial_sigma
   public :: get_indip_list
   public :: symmetrize
@@ -32,12 +26,20 @@ module RDMFT_AUX_FUNX
 
   interface symmetrize
      module procedure c_symmetrize,r_symmetrize
-  end interface symmetrize
+  end interface
 
   interface reshuffled
      module procedure dv_reshuffled,zv_reshuffled,&
           dm_reshuffled,zm_reshuffled
-  end interface reshuffled
+  end interface
+
+  interface get_sc_gloc_mats
+     module procedure get_sc_gloc_mats_,get_sc_gloc_mats__
+  end interface
+
+  interface get_sc_gloc_real
+     module procedure get_sc_gloc_real_,get_sc_gloc_real__
+  end interface
 
 
 contains
@@ -51,8 +53,8 @@ contains
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lmats),sigma(Nlat,Lmats)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lmats)
-    integer    :: i
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    integer    :: i,is
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     gf_tmp=zero
     fg=zero
@@ -78,8 +80,8 @@ contains
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lreal),sigma(Nlat,Lreal)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lreal)
-    integer    :: i
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    integer    :: i,is
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     gf_tmp=zero 
     fg=zero
@@ -101,12 +103,12 @@ contains
   end subroutine get_gloc_real
 
 
-  subroutine get_sc_gloc_mats(elocal,sigma,fg)
+  subroutine get_sc_gloc_mats_(elocal,sigma,fg)
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats)
     integer    :: i,is
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     fg=zero
     gf_tmp=zero
@@ -115,10 +117,10 @@ contains
        Gloc(1:Nlat,1:Nlat)          = -H0
        Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
        do is=1,Nlat
-          Gloc(is,is)      =  xi*wm(i)-sigma(1,is,i)        - elocal(is) + xmu
-          Gloc(Nlat+is,Nlat+is)=  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
-          Gloc(is,Nlat+is)   = -sigma(2,is,i)
-          Gloc(Nlat+is,is)   = -sigma(2,is,i)!==sigma(2,is,L+1-i) a simmetry in Matsubara!
+          Gloc(is,is)           =  xi*wm(i)-sigma(1,is,i)        - elocal(is) + xmu
+          Gloc(Nlat+is,Nlat+is) =  xi*wm(i)+conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
+          Gloc(is,Nlat+is)      = -sigma(2,is,i)
+          Gloc(Nlat+is,is)      = -sigma(2,is,i)                                    !==sigma(2,is,L+1-i) a simmetry in Matsubara!
        enddo
        call matrix_inverse_sym(Gloc)
        forall(is=1:Nlat)
@@ -131,15 +133,57 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_sc_gloc_mats
+  end subroutine get_sc_gloc_mats_
 
 
-  subroutine get_sc_gloc_real(elocal,sigma,fg)
+
+
+  subroutine get_sc_gloc_mats__(elocal,sigma,fg,ek,wtk)
+    real(8)    :: elocal(Nlat)
+    complex(8),intent(inout) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
+    real(8)    :: ek,wtk
+    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats),fg_k(2,Nlat,Lmats)
+    integer    :: i,is
+    !if(mpiID==0)write(LOGfile,*)"Get local GF:"
+    !call start_timer
+    fg_k=zero
+    gf_tmp=zero
+    do i=1+mpiID,Lmats,mpiSIZE
+       Gloc=zero
+       Gloc(1:Nlat,1:Nlat)          = -H0
+       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
+       do is=1,Nlat
+          Gloc(is,is)           =  xi*wm(i) - ek - sigma(1,is,i)        - elocal(is) + xmu
+          Gloc(Nlat+is,Nlat+is) =  xi*wm(i) + ek + conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
+          Gloc(is,Nlat+is)      = -sigma(2,is,i)
+          Gloc(Nlat+is,is)      = -sigma(2,is,i)                                          !==sigma(2,is,L+1-i) a simmetry in Matsubara!
+       enddo
+       call matrix_inverse_sym(Gloc)
+       forall(is=1:Nlat)
+          gf_tmp(1,is,i) = Gloc(is,is)
+          !##ACTHUNG!!
+          gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
+       end forall
+       !call eta(i,Lmats,file="Glocal.eta")
+    enddo
+    !call stop_timer
+    !+- reduce gf_tmp on fg_k -+!
+    call MPI_ALLREDUCE(gf_tmp,fg_k,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    !+- k-sums -+!
+    fg = fg + fg_k*wtk
+  end subroutine get_sc_gloc_mats__
+
+
+
+
+
+  subroutine get_sc_gloc_real_(elocal,sigma,fg)
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2
     integer    :: i,is
-    if(mpiID==0)write(LOGunit,*)"Get local GF:"
+    if(mpiID==0)write(LOGfile,*)"Get local GF:"
     call start_timer
     fg=zero ; gf_tmp=zero
     do i=1+mpiID,Lreal,mpiSIZE
@@ -173,8 +217,47 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_sc_gloc_real
+  end subroutine get_sc_gloc_real_
 
+
+  subroutine get_sc_gloc_real__(elocal,sigma,fg,ek,wtk)
+    real(8)    :: elocal(Nlat)
+    complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
+    real(8)    :: ek,wtk
+    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2,fg_k(2,Nlat,Lreal)
+    integer    :: i,is
+    !if(mpiID==0)write(LOGfile,*)"Get local GF:"
+    !call start_timer
+    fg_k=zero; 
+    gf_tmp=zero
+    do i=1+mpiID,Lreal,mpiSIZE
+       Gloc=zero
+       Gloc(1:Nlat,1:Nlat)          = -H0
+       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
+       do is=1,Nlat
+          zeta1=        cmplx(wr(i),eps,8) - ek     + xmu - sigma(1,is,i)       - elocal(is)
+          zeta2=-conjg( cmplx(wr(Lreal+1-i),eps,8) - ek + xmu - sigma(1,is,Lreal+1-i) ) + elocal(is)
+          Gloc(is,is)      = zeta1
+          Gloc(Nlat+is,Nlat+is)= zeta2
+          Gloc(is,Nlat+is)   = -sigma(2,is,i)
+          !S_12(w)=S^*(-w), by symmetry =S(w)=S_12(w)
+          !we set this block to the correct function S^*(-w)
+          Gloc(Nlat+is,is)   = -conjg(sigma(2,is,Lreal+1-i))
+       enddo
+       !the call to *symmetry* routine enforces the symmetry condition
+       !S^*(-w)=S(w)
+       call matrix_inverse_sym(Gloc)
+       forall(is=1:Nlat)
+          gf_tmp(1,is,i) = Gloc(is,is)
+          gf_tmp(2,is,i) = Gloc(is,Nlat+is)
+       end forall
+       !call eta(i,Lreal,file="Glocal.eta")
+    enddo
+    !call stop_timer
+    call MPI_ALLREDUCE(gf_tmp,fg_k,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    fg = fg + fg_k*wtk
+  end subroutine get_sc_gloc_real__
 
 
 
@@ -224,6 +307,18 @@ contains
   end subroutine get_tb_hamiltonian
 
 
+  !+- bulid linear chain hamiltonian -+!
+  subroutine get_slab_hamiltonian
+    integer          :: i
+    allocate(H0(Nlat,Nlat))
+    H0 = 0.d0
+    do i=1,Nlat-1
+       H0(i,i+1)=-ts
+       H0(i+1,i)=-ts
+    end do
+  end subroutine get_slab_hamiltonian
+
+
 
 
   !+----------------------------------------------------------------+
@@ -241,10 +336,10 @@ contains
        if(.not.check1)inquire(file=reg(fileSig)//".gz",exist=check1)
        check=check1
        if(check)then
-          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          if(mpiID==0)write(LOGfile,*)"Reading Self-energy from file:"
           call sread(reg(fileSig),foo_ome,sigma(:,:))
        else
-          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
+          if(mpiID==0)write(LOGfile,*)"Using Hartree-Fock-Bogoliubov self-energy"
           sigma(:,:)=zero
        endif
     endif
@@ -266,11 +361,11 @@ contains
        if(.not.check2)inquire(file=reg(fileSelf)//".gz",exist=check2)
        check=check1.AND.check2
        if(check)then
-          if(mpiID==0)write(LOGunit,*)"Reading Self-energy from file:"
+          if(mpiID==0)write(LOGfile,*)"Reading Self-energy from file:"
           call sread(reg(fileSig), foo_ome,sigma(1,:,:))
           call sread(reg(fileSelf),foo_ome,sigma(2,:,:))
        else
-          if(mpiID==0)write(LOGunit,*)"Using Hartree-Fock-Bogoliubov self-energy"
+          if(mpiID==0)write(LOGfile,*)"Using Hartree-Fock-Bogoliubov self-energy"
           sigma(1,:,:)=zero ; sigma(2,:,:)=-deltasc
        endif
     endif

@@ -69,18 +69,16 @@ contains
   include 'ed_lanc_gf_normal.f90'
   !SUPERCONDUCTING PHASE ROUTINES:
   include 'ed_lanc_gf_superc.f90'
-
+  
 
   !                    LANC SUSCPTIBILITY
   !+------------------------------------------------------------------+
   include 'ed_lanc_chi.f90'
 
 
-
   !                    FULL DIAGONALIZATION
   !+------------------------------------------------------------------+
   include 'ed_full_gf.f90'
-
 
 
   !                    FULL SUSCEPTIBILITY
@@ -105,8 +103,6 @@ contains
     allocate(tau(0:Ltau))
     tau(0:)= linspace(0.d0,beta,Ltau+1)
   end subroutine allocate_grids
-
-
 
 
 
@@ -238,19 +234,17 @@ contains
        write(LOGfile,*)""
     end select
 
-
   contains
-
 
     subroutine open_units(string)
       character(len=*) :: string
       unit=free_units(size(unit))
-      open(unit(1),file="impG"//string//"_iw.ed")
-      open(unit(2),file="impG"//string//"_realw.ed")
-      open(unit(3),file="impSigma"//string//"_iw.ed")
-      open(unit(4),file="impSigma"//string//"_realw.ed")
-      open(unit(5),file="impG0"//string//"_iw.ed")
-      open(unit(6),file="impG0"//string//"_realw.ed")
+      open(unit(1),file="impG"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(2),file="impG"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(3),file="impSigma"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(4),file="impSigma"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(5),file="impG0"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(6),file="impG0"//string//"_realw"//reg(ed_file_suffix)//".ed")
     end subroutine open_units
 
     subroutine close_units()
@@ -264,24 +258,12 @@ contains
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
   !+------------------------------------------------------------------+
   !PURPOSE  : Print Superconducting Green's functions
   !+------------------------------------------------------------------+
   subroutine print_imp_gf_sc
     integer                                        :: i,j,ispin,unit(12),iorb,jorb
+    complex(8)                                     :: iw
     complex(8),allocatable,dimension(:)            :: det
     complex(8),allocatable,dimension(:,:)          :: fg0,fg,sigma
     complex(8),dimension(Nspin,Nspin,Norb,Norb,Lmats) :: impG0mats,impF0mats
@@ -304,13 +286,14 @@ contains
           det     =  abs(impGmats(ispin,ispin,iorb,iorb,:))**2 + (impFmats(ispin,ispin,iorb,iorb,:))**2
           fg(1,:) =  conjg(impGmats(ispin,ispin,iorb,iorb,:))/det
           fg(2,:) =  impFmats(ispin,ispin,iorb,iorb,:)/det
-          do i=1,Lmats
-             fg0(1,i) =  xi*wm(i)+xmu-hloc(ispin,ispin,iorb,iorb)-delta_bath_mats(ispin,iorb,xi*wm(i),dmft_bath)
-             fg0(2,i) = -fdelta_bath_mats(ispin,iorb,xi*wm(i),dmft_bath)
+          do i=1,LMats
+             iw = xi*wm(i)
+             fg0(1,i) = iw+xmu-hloc(ispin,ispin,iorb,iorb)-delta_bath_mats(ispin,iorb,iw,dmft_bath)
+             fg0(2,i) = -fdelta_bath_mats(ispin,iorb,iw,dmft_bath)
           enddo
           impSmats(ispin,ispin,iorb,iorb,:)= fg0(1,:) - fg(1,:)
           impSAmats(ispin,ispin,iorb,iorb,:)= fg0(2,:) - fg(2,:)
-          det  =  abs(fg0(1,:))**2 + (fg0(2,:))**2
+          det     =  abs(fg0(1,:))**2 + (fg0(2,:))**2
           impG0mats(ispin,ispin,iorb,iorb,:) = conjg(fg0(1,:))/det
           impF0mats(ispin,ispin,iorb,iorb,:) = fg0(2,:)/det
        enddo
@@ -322,20 +305,27 @@ contains
     do ispin=1,Nspin
        do iorb=1,Norb
           do i=1,Lreal
-             det(i)  = impGreal(ispin,ispin,iorb,iorb,i)*conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i)) + &
-                  impFreal(ispin,ispin,iorb,iorb,i)*conjg(impFreal(ispin,ispin,iorb,iorb,Lreal+1-i))
-             fg(1,i) =  conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i))/det(i)
-             fg(2,i) =  conjg(impFreal(ispin,ispin,iorb,iorb,Lreal+1-i))/det(i)
-             fg0(1,i) = wr(i) + xmu - hloc(ispin,ispin,iorb,iorb) - delta_bath_real(ispin,iorb,wr(i)+xi*eps,dmft_bath)
-             fg0(2,i) = fdelta_bath_real(ispin,iorb,wr(i)+xi*eps,dmft_bath)
+             iw=cmplx(wr(i),eps)
+             !+-
+             !TESTS SHOW THAT THIS VERSION GIVES THE SAME RESULTS AS THE UNCOMMENTED LINES
+             ! det(i)  = impGreal(ispin,ispin,iorb,iorb,i)*conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i)) + &
+             !      impFreal(ispin,ispin,iorb,iorb,i)*conjg(impFreal(ispin,ispin,iorb,iorb,Lreal+1-i))
+             ! fg(1,i) =  conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i))/det(i)
+             ! fg(2,i) =  conjg(impFreal(ispin,ispin,iorb,iorb,Lreal+1-i))/det(i)
+             !+-
+             det(i)  = -impGreal(ispin,ispin,iorb,iorb,i)*conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i)) - &
+                  impFreal(ispin,ispin,iorb,iorb,i)*impFreal(ispin,ispin,iorb,iorb,i)
+             fg(1,i) =  -conjg(impGreal(ispin,ispin,iorb,iorb,Lreal+1-i))/det(i)
+             fg(2,i) =  -impFreal(ispin,ispin,iorb,iorb,i)/det(i)
+             fg0(1,i) =  wr(i)+xmu-hloc(ispin,ispin,iorb,iorb)-delta_bath_real(ispin,iorb,wr(i)+xi*eps,dmft_bath)
+             fg0(2,i) = -fdelta_bath_real(ispin,iorb,wr(i)+xi*eps,dmft_bath)
           enddo
-          impSreal(ispin,ispin,iorb,iorb,:) = fg0(1,:) - fg(1,:)
+          impSreal(ispin,ispin,iorb,iorb,:)= fg0(1,:) - fg(1,:)
           impSAreal(ispin,ispin,iorb,iorb,:)= fg0(2,:) - fg(2,:)
-          ! something wrong here, Im(impG0(w)) has the wrong sign
-          do i=1,Lreal          
-             det(i)     =  fg0(1,i)*conjg(fg0(1,Lreal+1-i)) + fg0(2,i)*conjg(fg0(2,Lreal+1-i))
-             impG0real(ispin,ispin,iorb,iorb,i) = conjg(fg0(1,Lreal+1-i))/det(i)
-             impF0real(ispin,ispin,iorb,iorb,i) = conjg(fg0(2,Lreal+1-i))/det(i)
+          do i=1,Lreal
+             det(i)     =  -fg0(1,i)*conjg(fg0(1,Lreal+1-i)) - fg0(2,i)*fg0(2,i)
+             impG0real(ispin,ispin,iorb,iorb,i) = -conjg(fg0(1,Lreal+1-i))/det(i)
+             impF0real(ispin,ispin,iorb,iorb,i) = -fg0(2,i)/det(i)
           enddo
        enddo
     enddo
@@ -383,19 +373,19 @@ contains
     subroutine open_units(string)
       character(len=*) :: string
       unit=free_units(size(unit))
-      open(unit(1),file="impG"//string//"_iw.ed")
-      open(unit(2),file="impF"//string//"_iw.ed")
-      open(unit(3),file="impSigma"//string//"_iw.ed")
-      open(unit(4),file="impSelf"//string//"_iw.ed")
-      open(unit(5),file="impG0"//string//"_iw.ed")
-      open(unit(6),file="impF0"//string//"_iw.ed")
+      open(unit(1),file="impG"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(2),file="impF"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(3),file="impSigma"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(4),file="impSelf"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(5),file="impG0"//string//"_iw"//reg(ed_file_suffix)//".ed")
+      open(unit(6),file="impF0"//string//"_iw"//reg(ed_file_suffix)//".ed")
       !
-      open(unit(7),file="impG"//string//"_realw.ed")
-      open(unit(8),file="impF"//string//"_realw.ed")
-      open(unit(9),file="impSigma"//string//"_realw.ed")
-      open(unit(10),file="impSelf"//string//"_realw.ed")
-      open(unit(11),file="impG0"//string//"_realw.ed")
-      open(unit(12),file="impF0"//string//"_realw.ed")
+      open(unit(7),file="impG"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(8),file="impF"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(9),file="impSigma"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(10),file="impSelf"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(11),file="impG0"//string//"_realw"//reg(ed_file_suffix)//".ed")
+      open(unit(12),file="impF0"//string//"_realw"//reg(ed_file_suffix)//".ed")
     end subroutine open_units
 
     subroutine close_units()
@@ -424,11 +414,11 @@ contains
     write(LOGfile,"(A)")"Printing the spin Chi:"
     do iorb=1,Norb
        unit(1)=free_unit()
-       open(unit(1),file="Chi_orb"//reg(txtfy(iorb))//"_tau.ed")
+       open(unit(1),file="Chi_orb"//reg(txtfy(iorb))//"_tau"//reg(ed_file_suffix)//".ed")
        unit(2)=free_unit()
-       open(unit(2),file="Chi_orb"//reg(txtfy(iorb))//"_realw.ed")
+       open(unit(2),file="Chi_orb"//reg(txtfy(iorb))//"_realw"//reg(ed_file_suffix)//".ed")
        unit(3)=free_unit()
-       open(unit(3),file="Chi_orb"//reg(txtfy(iorb))//"_iw.ed")
+       open(unit(3),file="Chi_orb"//reg(txtfy(iorb))//"_iw"//reg(ed_file_suffix)//".ed")
        do i=0,Ltau/2
           write(unit(1),*)tau(i),chitau(iorb,i)
        enddo

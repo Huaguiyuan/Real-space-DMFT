@@ -9,7 +9,7 @@ MODULE ED_OBSERVABLES
   USE ED_AUX_FUNX
   implicit none
   private
-
+  
   public                             :: ed_getobs
 
   logical,save                       :: iolegend=.true.
@@ -115,7 +115,7 @@ contains
              if(associated(gscvec))nullify(gscvec)
              deallocate(Hmap)
           enddo
-
+          !
           if(ed_supercond) then
              if(.not.allocated(phiscimp)) allocate(phiscimp(Norb))
              phiscimp = 0.d0
@@ -126,20 +126,25 @@ contains
                    if(finiteT)numstates=state_list%size
                    !   
                    do izero=1,numstates
-                      isect0     =  es_return_sector(state_list,izero)
-                      ei    =  es_return_energy(state_list,izero)
-                      gsvec  => es_return_vector(state_list,izero)
-                      norm0=sqrt(dot_product(gsvec,gsvec))
+                      !
+                      isect0 = es_return_sector(state_list,izero)
+                      Ei     = es_return_energy(state_list,izero)
+                      dim0   = getdim(isect0)
+                      if(ed_type=='d')then
+                         gsvec  => es_return_vector(state_list,izero)
+                         norm0=sqrt(dot_product(gsvec,gsvec))
+                      elseif(ed_type=='c')then
+                         gscvec  => es_return_cvector(state_list,izero)
+                         norm0=sqrt(dot_product(gscvec,gscvec))
+                      endif
                       if(abs(norm0-1.d0)>1.d-9)then
                          write(LOGfile,*) "GS : "//reg(txtfy(izero))//"is not normalized:"//txtfy(norm0)
                          stop
                       endif
                       peso = 1.d0 ; if(finiteT)peso=exp(-beta*(Ei-Egs))
                       peso = peso/zeta_function
-                      dim0  = getdim(isect0)
                       allocate(Hmap(dim0))
                       call build_sector(isect0,Hmap)
-
                       !APPLY CDG_UP + C_DW
                       isz0 = getsz(isect0)
                       if(isz0<Ns)then
@@ -229,7 +234,6 @@ contains
        allocate(simp(Norb,Nspin),zimp(Norb,Nspin))
        call get_szr
        if(iolegend)call write_legend
-       loop=loop+1
        call write_to_unit_column()
        write(LOGfile,"(A,10f18.12,f18.12)")"nimp=  ",(nimp(iorb),iorb=1,Norb),sum(nimp)
        if(ed_supercond)then
@@ -248,7 +252,7 @@ contains
           if(ed_supercond)ed_phisc(iorb)=phiscimp(iorb)
        enddo
        !
-       deallocate(nupimp,ndwimp,magimp,sz2imp,n2imp)
+       deallocate(nimp,dimp,nupimp,ndwimp,magimp,sz2imp,n2imp)
        deallocate(simp,zimp)
        if(ed_supercond)deallocate(phiscimp)
     endif
@@ -288,33 +292,40 @@ contains
   subroutine write_legend()
     integer :: unit,iorb,jorb,ispin
     unit = free_unit()
-    open(unit,file="columns_info.ed")
+    open(unit,file="columns_info"//reg(ed_file_suffix)//".ed")
     if(.not.ed_supercond)then
-       write(unit,"(A1,1A7,90(A10,5X))")"#","loop","xmu",&
-            (reg(txtfy(2+iorb))//"nimp_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(Norb+2+iorb))//"docc_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(2*Norb+2+iorb))//"nup_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(3*Norb+2+iorb))//"ndw_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(4*Norb+2+iorb))//"mag_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            reg(txtfy(5*Norb+3))//"s2",&
-            ((reg(txtfy(5*Norb+3+(iorb-1)*Norb+jorb))//"sz2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
-            ((reg(txtfy(7*Norb+3+(iorb-1)*Norb+jorb))//"n2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
-            ((reg(txtfy(9*Norb+3+(ispin-1)*Nspin+iorb))//"z_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin),&
-            ((reg(txtfy(10*Norb+3+(ispin-1)*Nspin+iorb))//"sig_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin)
+       write(unit,"(A1,90(A10,5X))")"#",&
+            (reg(txtfy(iorb))//"nimp_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(Norb+iorb))//"docc_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(2*Norb+iorb))//"nup_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(3*Norb+iorb))//"ndw_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(4*Norb+iorb))//"mag_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            reg(txtfy(5*Norb+1))//"s2",&
+            ((reg(txtfy(5*Norb+1+(iorb-1)*Norb+jorb))//"sz2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
+            ((reg(txtfy(7*Norb+1+(iorb-1)*Norb+jorb))//"n2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
+            ((reg(txtfy(9*Norb+1+(ispin-1)*Nspin+iorb))//"z_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin),&
+            ((reg(txtfy(10*Norb+1+(ispin-1)*Nspin+iorb))//"sig_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin)
     else
-       write(unit,"(A1,1A7,90(A10,5X))")"#","loop","xmu",&
-            (reg(txtfy(2+iorb))//"nimp_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(Norb+2+iorb))//"phi_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(2*Norb+2+iorb))//"docc_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(3*Norb+2+iorb))//"nup_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(4*Norb+2+iorb))//"ndw_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            (reg(txtfy(5*Norb+2+iorb))//"mag_"//reg(txtfy(iorb)),iorb=1,Norb),&
-            reg(txtfy(6*Norb+2+1))//"s2",&
-            ((reg(txtfy(6*Norb+3+(iorb-1)*Norb+jorb))//"sz2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
-            ((reg(txtfy(8*Norb+3+(iorb-1)*Norb+jorb))//"n2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
-            ((reg(txtfy(10*Norb+3+(ispin-1)*Nspin+iorb))//"z_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin),&
-            ((reg(txtfy(11*Norb+3+(ispin-1)*Nspin+iorb))//"sig_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin)
+       write(unit,"(A1,90(A10,5X))")"#",&
+            (reg(txtfy(iorb))//"nimp_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(Norb+iorb))//"phi_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(2*Norb+iorb))//"docc_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(3*Norb+iorb))//"nup_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(4*Norb+iorb))//"ndw_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            (reg(txtfy(5*Norb+iorb))//"mag_"//reg(txtfy(iorb)),iorb=1,Norb),&
+            reg(txtfy(6*Norb+1))//"s2",&
+            ((reg(txtfy(6*Norb+1+(iorb-1)*Norb+jorb))//"sz2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
+            ((reg(txtfy(8*Norb+1+(iorb-1)*Norb+jorb))//"n2_"//reg(txtfy(iorb))//reg(txtfy(jorb)),jorb=1,Norb),iorb=1,Norb),&
+            ((reg(txtfy(10*Norb+1+(ispin-1)*Nspin+iorb))//"z_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin),&
+            ((reg(txtfy(11*Norb+1+(ispin-1)*Nspin+iorb))//"sig_"//reg(txtfy(iorb))//"s"//reg(txtfy(ispin)),iorb=1,Norb),ispin=1,Nspin)
     endif
+    close(unit)
+    !
+    unit = free_unit()
+    open(unit,file="control_info"//reg(ed_file_suffix)//".ed")
+    write(unit,"(A1,90(A10,5X))")"#","1xmu","2beta",&
+         (reg(txtfy(2+iorb))//"U_"//reg(txtfy(iorb)),iorb=1,Norb),&
+         reg(txtfy(2+Norb+1))//"U`",reg(txtfy(2+Norb+2))//"Jh"
     close(unit)
     !
     iolegend=.false.
@@ -329,9 +340,14 @@ contains
     integer :: unit,flast
     integer :: iorb,jorb,ispin
     unit = free_unit()
-    open(unit,file="observables_all.ed",position='append')
+    open(unit,file="control_vars"//reg(ed_file_suffix)//".ed")
+    write(unit,"(90F15.9)")xmu,beta,(uloc(iorb),iorb=1,Norb),Ust,Jh
+    close(unit)
+
+    unit = free_unit()
+    open(unit,file="observables_all"//reg(ed_file_suffix)//".ed",position='append')
     if(.not.ed_supercond)then
-       write(unit,"(I7,90F15.9)")loop,xmu,&
+       write(unit,"(90F15.9)")&
             (nimp(iorb),iorb=1,Norb),&
             (dimp(iorb),iorb=1,Norb),&
             (nupimp(iorb),iorb=1,Norb),&
@@ -343,7 +359,7 @@ contains
             ((zimp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin),&
             ((simp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin)
     else
-       write(unit,"(I7,90F15.9)")loop,xmu,&
+       write(unit,"(90F15.9)")&
             (nimp(iorb),iorb=1,Norb),&
             (phiscimp(iorb),iorb=1,Norb),&
             (dimp(iorb),iorb=1,Norb),&
@@ -357,11 +373,10 @@ contains
             ((simp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin)
     endif
     close(unit)         
-
     unit = free_unit()
-    open(unit,file="observables_last.ed")
+    open(unit,file="observables_last"//reg(ed_file_suffix)//".ed")
     if(.not.ed_supercond)then
-       write(unit,"(I7,90F15.9)")loop,xmu,&
+       write(unit,"(90F15.9)")&
             (nimp(iorb),iorb=1,Norb),&
             (dimp(iorb),iorb=1,Norb),&
             (nupimp(iorb),iorb=1,Norb),&
@@ -373,7 +388,7 @@ contains
             ((zimp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin),&
             ((simp(iorb,ispin),iorb=1,Norb),ispin=1,Nspin)
     else
-       write(unit,"(I7,90F15.9)")loop,xmu,&
+       write(unit,"(90F15.9)")&
             (nimp(iorb),iorb=1,Norb),&
             (phiscimp(iorb),iorb=1,Norb),&
             (dimp(iorb),iorb=1,Norb),&

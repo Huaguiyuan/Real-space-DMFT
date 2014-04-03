@@ -1,18 +1,19 @@
-FC=$(SFMPI)/mpif90
+FC=mpif90
 #=========================================================================
 include sfmake.inc
 #=========================================================================
 
-DIREXE=$(HOME)/.bin
+DIREXE=$(HOME_G)/.project_bin
 DIR=drivers
 
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
-EXE=ahm_matsubara_disorder
+#EXE=ed_ahm_squareRDMFT
+EXE=ed_ahm_slabRDMFT
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
-OBJS = RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_AUX_FUNX.o RDMFT_WRAP_IPT.o RDMFT.o
+OBJS = RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_AUX_FUNX.o RDMFT_WRAP_IPT.o RDMFT_WRAP_ED.o RDMFT.o
 
 #=================STANDARD COMPILATION====================================
 all: FLAG=$(STD)
@@ -24,6 +25,7 @@ debug: FLAG=$(DEB)
 debug: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS_DEB)
 debug: compile
 
+lib: ipt_solver ed_solver
 
 
 #=================STANDARD COMPILATION====================================

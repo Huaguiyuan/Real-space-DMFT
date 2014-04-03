@@ -41,7 +41,7 @@ libipt_rdmft_deb.a:  $(OBJS)
 	$(FC) $(FLAG) -c $< $(SFINCLUDE)
 RDMFT_INPUT_VARS:
 	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE)  
-	$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(MOPT)../ 
+#$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(MOPT)../ 
 
 clean: 
 	@echo 'removing *.mod *.o *~'
