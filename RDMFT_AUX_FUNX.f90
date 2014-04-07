@@ -17,29 +17,46 @@ module RDMFT_AUX_FUNX
   public :: get_sc_gloc_mats
   public :: get_sc_gloc_real
 
+  !
+  !NORMAL
+  !
+  interface get_gloc_mats
+     module procedure get_gloc_mats_lattice,get_gloc_mats_slab
+  end interface get_gloc_mats
+
+  interface get_gloc_real
+     module procedure get_gloc_real_lattice,get_gloc_real_slab
+  end interface get_gloc_real
+
+  !
+  !SUPERCOND
+  !
+  interface get_sc_gloc_mats
+     module procedure get_sc_gloc_mats_lattice,get_sc_gloc_mats_slab
+  end interface get_sc_gloc_mats
+
+  interface get_sc_gloc_real
+     module procedure get_sc_gloc_real_lattice,get_sc_gloc_real_slab
+  end interface get_sc_gloc_real
+
+
   public :: get_tb_hamiltonian  !now only 2D square
   public :: get_slab_hamiltonian !to be overloaded with get_tb_hamiltonian !!!
   public :: setup_initial_sigma, setup_sc_initial_sigma
   public :: get_indip_list
+
+
   public :: symmetrize
   public :: reshuffled
 
   interface symmetrize
      module procedure c_symmetrize,r_symmetrize
-  end interface
+  end interface symmetrize
 
   interface reshuffled
      module procedure dv_reshuffled,zv_reshuffled,&
           dm_reshuffled,zm_reshuffled
-  end interface
-
-  interface get_sc_gloc_mats
-     module procedure get_sc_gloc_mats_,get_sc_gloc_mats__
-  end interface
-
-  interface get_sc_gloc_real
-     module procedure get_sc_gloc_real_,get_sc_gloc_real__
-  end interface
+  end interface reshuffled
 
 
 contains
@@ -48,8 +65,12 @@ contains
 
   !+----------------------------------------------------------------+
   !PURPOSE  : Evaluate the local GFs in Real-space formalism, 
-  ! using matrix inversion !+----------------------------------------------------------------+
-  subroutine get_gloc_mats(elocal,sigma,fg) 
+  ! using matrix inversion 
+  !+----------------------------------------------------------------+
+  !
+  !NORMAL
+  !
+  subroutine get_gloc_mats_lattice(elocal,sigma,fg) 
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lmats),sigma(Nlat,Lmats)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lmats)
@@ -73,10 +94,9 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_gloc_mats
+  end subroutine get_gloc_mats_lattice
 
-
-  subroutine get_gloc_real(elocal,sigma,fg) 
+  subroutine get_gloc_real_lattice(elocal,sigma,fg) 
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(Nlat,Lreal),sigma(Nlat,Lreal)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lreal)
@@ -100,10 +120,13 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_gloc_real
+  end subroutine get_gloc_real_lattice
 
 
-  subroutine get_sc_gloc_mats_(elocal,sigma,fg)
+  !
+  !SUPERCOND
+  !
+  subroutine get_sc_gloc_mats_lattice(elocal,sigma,fg)
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats)
@@ -133,52 +156,9 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_sc_gloc_mats_
+  end subroutine get_sc_gloc_mats_lattice
 
-
-
-
-  subroutine get_sc_gloc_mats__(elocal,sigma,fg,ek,wtk)
-    real(8)    :: elocal(Nlat)
-    complex(8),intent(inout) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
-    real(8)    :: ek,wtk
-    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats),fg_k(2,Nlat,Lmats)
-    integer    :: i,is
-    !if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    !call start_timer
-    fg_k=zero
-    gf_tmp=zero
-    do i=1+mpiID,Lmats,mpiSIZE
-       Gloc=zero
-       Gloc(1:Nlat,1:Nlat)          = -H0
-       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
-       do is=1,Nlat
-          Gloc(is,is)           =  xi*wm(i) - ek - sigma(1,is,i)        - elocal(is) + xmu
-          Gloc(Nlat+is,Nlat+is) =  xi*wm(i) + ek + conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
-          Gloc(is,Nlat+is)      = -sigma(2,is,i)
-          Gloc(Nlat+is,is)      = -sigma(2,is,i)                                          !==sigma(2,is,L+1-i) a simmetry in Matsubara!
-       enddo
-       call matrix_inverse_sym(Gloc)
-       forall(is=1:Nlat)
-          gf_tmp(1,is,i) = Gloc(is,is)
-          !##ACTHUNG!!
-          gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
-       end forall
-       !call eta(i,Lmats,file="Glocal.eta")
-    enddo
-    !call stop_timer
-    !+- reduce gf_tmp on fg_k -+!
-    call MPI_ALLREDUCE(gf_tmp,fg_k,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
-    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-    !+- k-sums -+!
-    fg = fg + fg_k*wtk
-  end subroutine get_sc_gloc_mats__
-
-
-
-
-
-  subroutine get_sc_gloc_real_(elocal,sigma,fg)
+  subroutine get_sc_gloc_real_lattice(elocal,sigma,fg)
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2
@@ -217,17 +197,117 @@ contains
     call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
-  end subroutine get_sc_gloc_real_
+  end subroutine get_sc_gloc_real_lattice
 
 
-  subroutine get_sc_gloc_real__(elocal,sigma,fg,ek,wtk)
+
+
+
+
+  !+----------------------------------------------------------------+
+  !PURPOSE  : Evaluate the local GFs in Real-space formalism, 
+  ! using matrix inversion 
+  !+----------------------------------------------------------------+
+  !
+  !NORMAL
+  !
+  subroutine get_gloc_mats_slab(elocal,sigma,fg,ek,wtk)
+    real(8)                  :: elocal(Nlat)
+    complex(8),intent(inout) :: fg(Nlat,Lmats),sigma(Nlat,Lmats)
+    real(8)                  :: ek,wtk
+    complex(8)               :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,Lmats),fg_k(Nlat,Lmats)
+    integer                  :: i,is
+    fg_k=zero
+    gf_tmp=zero
+    do i=1+mpiID,Lmats,mpiSIZE
+       Gloc  = zero
+       zeta  = xi*wm(i) + xmu
+       Gloc  = -H0
+       do is=1,Nlat
+          Gloc(is,is)           =  zeta  - elocal(is) - ek - sigma(is,i)
+       enddo
+       call matrix_inverse_sym(Gloc)
+       forall(is=1:Nlat)
+          gf_tmp(is,i) = Gloc(is,is)
+       end forall
+    enddo
+    !+- reduce gf_tmp on fg_k -+!
+    call MPI_ALLREDUCE(gf_tmp,fg_k,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    !+- k-sums -+!
+    fg = fg + fg_k*wtk
+  end subroutine get_gloc_mats_slab
+
+  subroutine get_gloc_real_slab(elocal,sigma,fg,ek,wtk)
+    real(8)                  :: elocal(Nlat)
+    complex(8),intent(inout) :: fg(Nlat,Lreal),sigma(Nlat,Lreal)
+    real(8)                  :: ek,wtk
+    complex(8)               :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,Lreal),fg_k(Nlat,Lreal)
+    integer                  :: i,is
+    fg_k=zero
+    gf_tmp=zero
+    do i=1+mpiID,Lreal,mpiSIZE
+       Gloc  = zero
+       zeta  = cmplx(wr(i),eps,8) + xmu
+       Gloc  = zero-H0
+       do is=1,Nlat
+          Gloc(is,is) =  zeta  - elocal(is) - ek - sigma(is,i)
+       enddo
+       call matrix_inverse_sym(Gloc)
+       forall(is=1:Nlat)
+          gf_tmp(is,i) = Gloc(is,is)
+       end forall
+    enddo
+    !+- reduce gf_tmp on fg_k -+!
+    call MPI_ALLREDUCE(gf_tmp,fg_k,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    !+- k-sums -+!
+    fg = fg + fg_k*wtk
+  end subroutine get_gloc_real_slab
+
+
+
+  !
+  !SUPERCOND
+  !
+  subroutine get_sc_gloc_mats_slab(elocal,sigma,fg,ek,wtk)
+    real(8)    :: elocal(Nlat)
+    complex(8),intent(inout) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
+    real(8)    :: ek,wtk
+    complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats),fg_k(2,Nlat,Lmats)
+    integer    :: i,is
+    fg_k=zero
+    gf_tmp=zero
+    do i=1+mpiID,Lmats,mpiSIZE
+       Gloc=zero
+       Gloc(1:Nlat,1:Nlat)          = -H0
+       Gloc(Nlat+1:2*Nlat,Nlat+1:2*Nlat)=  H0
+       do is=1,Nlat
+          Gloc(is,is)           =  xi*wm(i) - ek - sigma(1,is,i)        - elocal(is) + xmu
+          Gloc(Nlat+is,Nlat+is) =  xi*wm(i) + ek + conjg(sigma(1,is,i)) + elocal(is) - xmu !==-conjg(Gloc(is,is))
+          Gloc(is,Nlat+is)      = -sigma(2,is,i)
+          Gloc(Nlat+is,is)      = -sigma(2,is,i)                                          !==sigma(2,is,L+1-i) a simmetry in Matsubara!
+       enddo
+       call matrix_inverse_sym(Gloc)
+       forall(is=1:Nlat)
+          gf_tmp(1,is,i) = Gloc(is,is)
+          !##ACTHUNG!!
+          gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
+       end forall
+    enddo
+    !+- reduce gf_tmp on fg_k -+!
+    call MPI_ALLREDUCE(gf_tmp,fg_k,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
+    call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
+    !+- k-sums -+!
+    fg = fg + fg_k*wtk
+  end subroutine get_sc_gloc_mats_slab
+
+  subroutine get_sc_gloc_real_slab(elocal,sigma,fg,ek,wtk)
     real(8)    :: elocal(Nlat)
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     real(8)    :: ek,wtk
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2,fg_k(2,Nlat,Lreal)
     integer    :: i,is
-    !if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    !call start_timer
     fg_k=zero; 
     gf_tmp=zero
     do i=1+mpiID,Lreal,mpiSIZE
@@ -251,13 +331,19 @@ contains
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Nlat+is)
        end forall
-       !call eta(i,Lreal,file="Glocal.eta")
     enddo
-    !call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg_k,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
     fg = fg + fg_k*wtk
-  end subroutine get_sc_gloc_real__
+  end subroutine get_sc_gloc_real_slab
+
+
+
+
+
+
+
+
 
 
 
@@ -317,6 +403,8 @@ contains
        H0(i+1,i)=-ts
     end do
   end subroutine get_slab_hamiltonian
+
+
 
 
 

@@ -1,15 +1,16 @@
-FC=mpif90
+FC=$(SFMPI)/mpif90
 #=========================================================================
 include sfmake.inc
 #=========================================================================
 
-DIREXE=$(HOME_G)/.project_bin
+DIREXE=$(HOME)/.bin
 DIR=drivers
 
 #EXE=ahm_real_trap
 #EXE=ahm_real_disorder
 #EXE=ed_ahm_squareRDMFT
-EXE=ed_ahm_slabRDMFT
+#EXE=ed_ahm_slabRDMFT
+EXE=ed_ahm_disorder
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
@@ -54,6 +55,8 @@ clean:
 all_clean: clean
 	@make -C IPT_SOLVER/ clean
 	@make -C ED_SOLVER/ clean
+
+
 
 version:
 	@echo $(VER)

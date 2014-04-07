@@ -71,6 +71,7 @@ module RDMFT_INPUT_VARS
   real(8)              :: nerr                !fix density threshold. a loop over from 1.d-1 to required nerr is performed
   real(8)              :: ndelta              !initial chemical potential step
   integer              :: niter
+  logical              :: ed_verbose !verbose flag:
 
   !Some parameters for function dimension:
   !=========================================================
@@ -98,9 +99,9 @@ contains
 
 
     !RDMFT INPUT
-    call parse_input_variable(Nside,"NSIDE",INPUTunit,default=5)
+    call parse_input_variable(Nside,"NSIDE",INPUTunit,default=6)
     call parse_input_variable(wdis,"WDIS",INPUTunit,default=0.d0)
-    call parse_input_variable(v0trap,"V0TRAP",INPUTunit,default=0.1d0)
+    call parse_input_variable(v0trap,"V0TRAP",INPUTunit,default=0.d0)
     call parse_input_variable(a0trap,"A0TRAP",INPUTunit,default=0.d0)
     call parse_input_variable(rdmft_nread,"RDMFT_NREAD",INPUTunit,default=0.d0)
     call parse_input_variable(rdmft_nerror,"RDMFT_NERROR",INPUTunit,default=1.d-4)
@@ -128,9 +129,9 @@ contains
     call parse_input_variable(xmu,"XMU",INPUTunit,default=0.d0)
     call parse_input_variable(deltasc,"DELTASC",INPUTunit,default=2.d-2)
     call parse_input_variable(nloop,"NLOOP",INPUTunit,default=100)
-    call parse_input_variable(dmft_error,"DMFT_ERROR",INPUTunit,default=1.d-5)
+    call parse_input_variable(dmft_error,"DMFT_ERROR",INPUTunit,default=1.d-4)
     call parse_input_variable(sb_field,"SB_FIELD",INPUTunit,default=0.1d0)
-    call parse_input_variable(nsuccess,"NSUCCESS",INPUTunit,default=1)
+    call parse_input_variable(nsuccess,"NSUCCESS",INPUTunit,default=0)
     call parse_input_variable(Lmats,"LMATS",INPUTunit,default=2000)
     call parse_input_variable(Lmats,"L",INPUTunit,default=2000)
     call parse_input_variable(Lreal,"LREAL",INPUTunit,default=2000)
@@ -155,7 +156,7 @@ contains
     call parse_input_variable(lanc_ngfiter,"LANC_NGFITER",INPUTunit,default=100)
     call parse_input_variable(cg_niter,"CG_NITER",INPUTunit,default=200)
     call parse_input_variable(cg_scheme,"CG_SCHEME",INPUTunit,default='delta')
-    call parse_input_variable(cg_ftol,"CG_FTOL",INPUTunit,default=1.d-9)
+    call parse_input_variable(cg_ftol,"CG_FTOL",INPUTunit,default=1.d-3)
     call parse_input_variable(cg_weight,"CG_WEIGHT",INPUTunit,default=0)
     call parse_input_variable(ed_Type,"ED_TYPE",INPUTunit,default='d')
     call parse_input_variable(ed_Supercond,"ED_SUPERCOND",INPUTunit,default=.false.)
@@ -163,7 +164,8 @@ contains
     call parse_input_variable(bath_type,"BATH_TYPE",INPUTunit,default='normal')
     call parse_input_variable(Hfile,"HFILE",INPUTunit,default="hamiltonian")
     call parse_input_variable(LOGfile,"LOGFILE",INPUTunit,default=6)
-    call parse_input_variable(ed_file_suffix,"ED_FILE_SUFFIX",INPUTunit,default="")
+    call parse_input_variable(ed_file_suffix,"ED_FILE_SUFFIX",INPUTunit,default=".ed")
+    call parse_input_variable(ed_verbose,"ED_VERBOSE",INPUTunit,default=.true.)
     call substring_delete(ed_file_suffix,".ed")
     call substring_delete(Hfile,".restart")
     call substring_delete(Hfile,".ed")
