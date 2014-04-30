@@ -19,13 +19,14 @@ program ed_ahm_disorder
   implicit none
   complex(8),allocatable,dimension(:,:,:) :: Smats,Sreal !self_energies
   complex(8),allocatable,dimension(:,:,:) :: Gmats,Greal !local green's functions
-  complex(8),allocatable,dimension(:,:,:) :: Delta      
+  complex(8),allocatable,dimension(:,:,:) :: Delta,errDelta
   real(8),allocatable,dimension(:)        :: erandom
-  real(8),allocatable,dimension(:,:,:)    :: bath,bath_old
+  real(8),allocatable,dimension(:,:,:)    :: bath,bath_old,errBath
   logical                                 :: converged
-  real(8)                                 :: wmix
+  real(8)                                 :: wmixing
   integer                                 :: i,is,iloop
   integer                                 :: Nb(2)
+  real(8),dimension(:),allocatable :: Verror
 
   !+-------------------------------------------------------------------+!
   ! START MPI !
@@ -39,8 +40,8 @@ program ed_ahm_disorder
 
   !+-------------------------------------------------------------------+!
   ! READ INPUT FILES !
+  call parse_input_variable(wmixing,"WMIXING","inputRDMFT.in",default=0.5d0)
   call rdmft_read_input("inputRDMFT.in")
-  call parse_input_variable(wmix,"WMIX","inputRDMFT.in",default=0.9d0)
   store_size=1024
   Nlat = Nside**2
   allocate(nii(Nlat))
@@ -72,13 +73,14 @@ program ed_ahm_disorder
 
   !+- allocate a bath for each impurity -+!
   Nb=get_bath_size()
-  allocate(bath(Nb(1),Nb(2),Nlat))
-  allocate(bath_old(Nb(1),Nb(2),Nlat))
+  allocate(bath(Nlat,Nb(1),Nb(2)))
+  allocate(bath_old(Nlat,Nb(1),Nb(2)))
   allocate(Smats(2,Nlat,Lmats))
   allocate(Sreal(2,Nlat,Lreal))
   allocate(Gmats(2,Nlat,Lmats))
   allocate(Greal(2,Nlat,Lreal))
   allocate(Delta(2,Nlat,Lmats))
+
   !+- initialize baths -+!
   call init_lattice_baths(bath)
   bath_old=bath
@@ -89,8 +91,10 @@ program ed_ahm_disorder
      iloop=iloop+1
      call start_loop(iloop,nloop,"DMFT-loop",unit=LOGfile)
      call ed_solve_sc_impurity(bath,erandom,Delta,Gmats,Greal,Smats,Sreal)
-     bath=wmix*bath + (1.d0-wmix)*bath_old
-     if(mpiID==0)converged = check_convergence(pii,dmft_error,Nsuccess,nloop,id=0,file="error.err")
+     bath=wmixing*bath + (1.d0-wmixing)*bath_old
+     if(mpiID==0)converged = check_convergence_local(bath(:,1,:),dmft_error,Nsuccess,nloop,index=2,total=3,id=0,file="BATHerror.err",reset=.false.)
+     if(mpiID==0)converged = check_convergence(Delta(1,:,:),dmft_error,Nsuccess,nloop,index=3,total=3,id=0,file="DELTAerror.err",reset=.false.)
+     if(mpiID==0)converged = check_convergence_local(pii,dmft_error,Nsuccess,nloop,index=1,total=3,id=0,file="error.err")
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
      call end_loop()
@@ -117,20 +121,25 @@ contains
     logical                        :: converged
     complex(8),dimension(2,Lmats)  :: aGmats,aSmats
     complex(8),dimension(2,Lreal)  :: aGreal,aSreal
-    character(len=4)               :: loop
+    character(len=50)              :: suffix
 
 
     if(mpiID==0)then
-       write(loop,"(I4)")iloop
-       nimp = sum(nii)/dble(Nlat)
-       phi  = sum(pii)/dble(Nlat)
-       docc = sum(dii)/dble(Nlat)
-       ccdw = 0.d0
+       suffix=".data"
+       ! write(suffix,'(I4.4)') iloop
+       ! suffix = "_loop"//trim(suffix)//".data"
+
+       !Get CDW "order parameter"
        do is=1,Nlat
           row=irow(is)
           col=icol(is)
-          ccdw = ccdw + (-1.d0)**(row+col)*(nii(is)-1.d0)
+          cdwii(is) = (-1.d0)**(row+col)*(nii(is)-1.d0)
        enddo
+
+       nimp = sum(nii)/dble(Nlat)
+       phi  = sum(pii)/dble(Nlat)
+       docc = sum(dii)/dble(Nlat)
+       ccdw = sum(cdwii)/dble(Nlat)
        print*,"nimp  =",nimp
        print*,"phi   =",phi
        print*,"docc  =",docc
@@ -140,29 +149,31 @@ contains
        call splot("phiVSiloop.data",iloop,phi,append=.true.)
        call splot("doccVSiloop.data",iloop,docc,append=.true.)
        call splot("ccdwVSiloop.data",iloop,ccdw,append=.true.)
-       call store_data("nVSisite.data",nii)
-       call store_data("phiVSisite.data",pii)
-       call store_data("doccVSisite.data",dii)
+       call store_data("nVSisite"//trim(suffix),nii)
+       call store_data("phiVSisite"//trim(suffix),pii)
+       call store_data("doccVSisite"//trim(suffix),dii)
+       call store_data("cdwVSisite"//trim(suffix),cdwii)
 
-       call splot("LDelta_iw.data",wm(1:Lmats),Delta(1,1:Nlat,1:Lmats))
-       call splot("LGamma_iw.data",wm(1:Lmats),Delta(2,1:Nlat,1:Lmats))
-       call splot("LG_iw.data",wm(1:Lmats),Gmats(1,1:Nlat,1:Lmats))
-       call splot("LF_iw.data",wm(1:Lmats),Gmats(2,1:Nlat,1:Lmats))
-       call splot("LG_realw.data",wr(1:Lreal),Greal(1,1:Nlat,1:Lreal))
-       call splot("LF_realw.data",wr(1:Lreal),Greal(2,1:Nlat,1:Lreal))
+       !<DEBUG: to be moved under converged section below
+       call splot("LDelta_iw"//trim(suffix),wm(1:Lmats),Delta(1,1:Nlat,1:Lmats))
+       call splot("LGamma_iw"//trim(suffix),wm(1:Lmats),Delta(2,1:Nlat,1:Lmats))
+       call splot("LG_iw"//trim(suffix),wm(1:Lmats),Gmats(1,1:Nlat,1:Lmats))
+       call splot("LF_iw"//trim(suffix),wm(1:Lmats),Gmats(2,1:Nlat,1:Lmats))
+       call splot("LG_realw"//trim(suffix),wr(1:Lreal),Greal(1,1:Nlat,1:Lreal))
+       call splot("LF_realw"//trim(suffix),wr(1:Lreal),Greal(2,1:Nlat,1:Lreal))
+       call splot("LSigma_iw"//trim(suffix),wm(1:Lmats),Smats(1,1:Nlat,1:Lmats))
+       call splot("LSelf_iw"//trim(suffix),wm(1:Lmats),Smats(2,1:Nlat,1:Lmats))
+       call splot("LSigma_realw"//trim(suffix),wr(1:Lreal),Sreal(1,1:Nlat,1:Lreal))
+       call splot("LSelf_realw"//trim(suffix),wr(1:Lreal),Sreal(2,1:Nlat,1:Lreal))
+       !>DEBUG
 
        !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
-          call splot("LSigma_iw.data",wm(1:Lmats),Smats(1,1:Nlat,1:Lmats))
-          call splot("LSelf_iw.data",wm(1:Lmats),Smats(2,1:Nlat,1:Lmats))
-          call splot("LSigma_realw.data",wr(1:Lreal),Sreal(1,1:Nlat,1:Lreal))
-          call splot("LSelf_realw.data",wr(1:Lreal),Sreal(2,1:Nlat,1:Lreal))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Nlat
              row=irow(is)
              col=icol(is)
-             cdwii(is) = (-1.d0)**(row+col)*(nii(is)-1.d0)
              sii(is)   = dimag(Smats(1,is,1))-&
                   wm(1)*(dimag(Smats(1,is,2))-dimag(Smats(1,is,1)))/(wm(2)-wm(1))
              rii(is)   = dimag(Gmats(1,is,1))-&
@@ -183,14 +194,12 @@ contains
              enddo
           enddo
 
-          call store_data("cdwVSisite.data",cdwii)
-          call store_data("rhoVSisite.data",rii)
-          call store_data("sigmaVSisite.data",sii)
-          call store_data("zetaVSisite.data",zii)
-          call store_data("erandomVSisite.data",erandom)
-          call splot3d("3d_nVSij.data",grid_x,grid_y,nij)
-          call splot3d("3d_doccVSij.data",grid_x,grid_y,dij)
-          call splot3d("3d_phiVSij.data",grid_x,grid_y,pij)
+          call store_data("rhoVSisite"//trim(suffix),rii)
+          call store_data("sigmaVSisite"//trim(suffix),sii)
+          call store_data("zetaVSisite"//trim(suffix),zii)
+          call splot3d("3d_nVSij"//trim(suffix),grid_x,grid_y,nij)
+          call splot3d("3d_doccVSij"//trim(suffix),grid_x,grid_y,dij)
+          call splot3d("3d_phiVSij"//trim(suffix),grid_x,grid_y,pij)
 
           !Plot averaged local functions
           aGmats    = sum(Gmats,dim=2)/real(Nlat,8)
@@ -200,55 +209,55 @@ contains
           aSreal = sum(Sreal,dim=2)/real(Nlat,8)
 
 
-          call splot("aSigma_iw.data",wm,aSmats(1,:))
-          call splot("aSelf_iw.data",wm,aSmats(2,:))
-          call splot("aSigma_realw.data",wr,aSreal(1,:))
-          call splot("aSelf_realw.data",wr,aSreal(2,:))
+          call splot("aSigma_iw"//trim(suffix),wm,aSmats(1,:))
+          call splot("aSelf_iw"//trim(suffix),wm,aSmats(2,:))
+          call splot("aSigma_realw"//trim(suffix),wr,aSreal(1,:))
+          call splot("aSelf_realw"//trim(suffix),wr,aSreal(2,:))
 
-          call splot("aG_iw.data",wm,aGmats(1,:))
-          call splot("aF_iw.data",wm,aGmats(2,:))
-          call splot("aG_realw.data",wr,aGreal(1,:))
-          call splot("aF_realw.data",wr,aGreal(2,:))
+          call splot("aG_iw"//trim(suffix),wm,aGmats(1,:))
+          call splot("aF_iw"//trim(suffix),wm,aGmats(2,:))
+          call splot("aG_realw"//trim(suffix),wr,aGreal(1,:))
+          call splot("aF_realw"//trim(suffix),wr,aGreal(2,:))
 
 
           call get_moments(nii,mean,sdev,var,skew,kurt)
           data_mean(1)=mean
           data_sdev(1)=sdev
-          call splot("statistics.n.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.n"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(dii,mean,sdev,var,skew,kurt)
           data_mean(2)=mean
           data_sdev(2)=sdev
-          call splot("statistics.docc.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.docc"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(pii,mean,sdev,var,skew,kurt)
           data_mean(2)=mean
           data_sdev(2)=sdev
-          call splot("statistics.phi.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.phi"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(cdwii,mean,sdev,var,skew,kurt)
-          call splot("statistics.cdwn.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.cdwn"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(zii,mean,sdev,var,skew,kurt)
-          call splot("statistics.zeta.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.zeta"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(sii,mean,sdev,var,skew,kurt)
-          call splot("statistics.sigma.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.sigma"//trim(suffix),mean,sdev,var,skew,kurt)
           !
           call get_moments(rii,mean,sdev,var,skew,kurt)
-          call splot("statistics.rho.data",mean,sdev,var,skew,kurt)
+          call splot("statistics.rho"//trim(suffix),mean,sdev,var,skew,kurt)
 
           data_covariance(1,:)=nii
           data_covariance(2,:)=pii
           covariance_nd = get_covariance(data_covariance,data_mean)
-          open(10,file="covariance_n.phi.data")
+          open(10,file="covariance_n.phi"//trim(suffix))
           do i=1,2
              write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
           enddo
           close(10)
 
           forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
-          open(10,file="correlation_n.phi.data")
+          open(10,file="correlation_n.phi"//trim(suffix))
           do i=1,2
              write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
           enddo

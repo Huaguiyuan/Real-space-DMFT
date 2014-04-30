@@ -42,7 +42,7 @@ contains
   !            Fit new bath
   !+------------------------------------------------------------+!
   subroutine ed_solve_impurity_lattice(bath_,eloc,Delta,Gmats,Greal,Smats,Sreal,Usite)
-    real(8)                  :: bath_(:,:,:),bath_tmp(size(bath_,1),size(bath_,2))
+    real(8)                  :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                  :: eloc(Nlat)
     real(8),optional         :: Usite(Nlat)
     complex(8),intent(inout) :: Delta(Nlat,Lmats)
@@ -58,9 +58,9 @@ contains
     real(8)                  :: nii_tmp(Nlat),dii_tmp(Nlat)
     logical                  :: check_dim
     character(len=5)         :: tmp_suffix
-    if(size(bath_,3).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1+mpiID,Nlat,mpiSIZE
-       check_dim = check_bath_dimension(bath_(:,:,ilat))
+       check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     call start_timer
@@ -74,8 +74,7 @@ contains
     do ilat=1+mpiID,Nlat,mpiSIZE
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
-       if(present(Usite)) Uloc(1)=Usite(ilat)
-       call ed_solver(bath_(:,:,ilat))
+       call ed_solver(bath_(ilat,:,:))
        Smats_tmp(ilat,:) = impSmats(1,1,1,1,:)
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
@@ -103,7 +102,7 @@ contains
              Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Smats(ilat,i) - one/Gmats(ilat,i)
           endif
        end do
-       call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(:,:,ilat),ispin=1)
+       call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(ilat,:,:),ispin=1)
     end do
     call MPI_ALLREDUCE(Delta_tmp(1:Nlat,1,1,1:Lmats),Delta,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine ed_solve_impurity_lattice
@@ -114,7 +113,7 @@ contains
   ! SC-version       
   !+------------------------------------------------------------+!
   subroutine ed_solve_sc_impurity_lattice(bath_,eloc,Delta,Gmats,Greal,Smats,Sreal,Usite)
-    real(8)                  :: bath_(:,:,:),bath_tmp(size(bath_,1),size(bath_,2))
+    real(8)                  :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                  :: eloc(Nlat)
     real(8),optional         :: Usite(Nlat)
     complex(8),intent(inout) :: Delta(2,Nlat,Lmats)
@@ -130,9 +129,9 @@ contains
     real(8)                  :: nii_tmp(Nlat),dii_tmp(Nlat),pii_tmp(Nlat)
     logical                  :: check_dim
     character(len=5)         :: tmp_suffix
-    if(size(bath_,3).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1+mpiID,Nlat,mpiSIZE
-       check_dim = check_bath_dimension(bath_(:,:,ilat))
+       check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     call start_timer
@@ -148,7 +147,7 @@ contains
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
-       call ed_solver(bath_(:,:,ilat))
+       call ed_solver(bath_(ilat,:,:))
        Smats_tmp(1,ilat,:) = impSmats(1,1,1,1,:)
        Smats_tmp(2,ilat,:) = impSAmats(1,1,1,1,:)
        Sreal_tmp(1,ilat,:) = impSreal(1,1,1,1,:)
@@ -183,12 +182,11 @@ contains
              Delta_tmp(2,ilat,1,1,i)  =  calG(2,i)/cdet
           else
              cdet       = abs(Gmats(1,ilat,i))**2 + (Gmats(2,ilat,i))**2
-             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Smats(1,ilat,i) - &
-                  conjg(Gmats(1,ilat,i))/cdet 
+             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Smats(1,ilat,i) - conjg(Gmats(1,ilat,i))/cdet 
              Delta_tmp(2,ilat,1,1,i) = -(Gmats(2,ilat,i)/cdet + Smats(2,ilat,i))
           endif
        end do
-       call chi2_fitgf(Delta_tmp(:,ilat,:,:,:),bath_(:,:,ilat),ispin=1)
+       call chi2_fitgf(Delta_tmp(:,ilat,:,:,:),bath_(ilat,:,:),ispin=1)
     end do
     call MPI_ALLREDUCE(Delta_tmp(:,:,1,1,:),Delta,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine ed_solve_sc_impurity_lattice
@@ -205,7 +203,7 @@ contains
   !          fit new bath                                                         
   !+-----------------------------------------------------------------------------+!
   subroutine ed_solve_impurity_slab(bath_,eloc,Nx,Delta,Gmats,Greal,Smats,Sreal,Usite)
-    real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,1),size(bath_,2))
+    real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                          :: eloc(Nlat)
     real(8),optional                 :: Usite(Nlat)
     integer                          :: Nx
@@ -226,9 +224,9 @@ contains
     real(8)                          :: nii_tmp(Nlat),dii_tmp(Nlat)
     logical                          :: check_dim
     character(len=5)                 :: tmp_suffix
-    if(size(bath_,3).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1+mpiID,Nlat,mpiSIZE
-       check_dim = check_bath_dimension(bath_(:,:,ilat))
+       check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     call start_timer
@@ -244,7 +242,7 @@ contains
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
-       call ed_solver(bath_(:,:,ilat))
+       call ed_solver(bath_(ilat,:,:))
        Smats_tmp(ilat,:) = impSmats(1,1,1,1,:)
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
@@ -284,7 +282,7 @@ contains
              Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Smats(ilat,i) - one/Gmats(ilat,i)
           endif
        end do
-       call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(:,:,ilat),ispin=1)
+       call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(ilat,:,:),ispin=1)
     end do
     call MPI_ALLREDUCE(Delta_tmp(:,1,1,:),Delta,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine ed_solve_impurity_slab
@@ -295,7 +293,7 @@ contains
   ! SC-version       
   !+------------------------------------------------------------+!
   subroutine ed_solve_sc_impurity_slab(bath_,eloc,Nx,Delta,Gmats,Greal,Smats,Sreal,Usite)
-    real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,1),size(bath_,2))
+    real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                          :: eloc(Nlat)
     real(8),optional                 :: Usite(Nlat)
     integer                          :: Nx
@@ -316,9 +314,9 @@ contains
     real(8)                          :: nii_tmp(Nlat),dii_tmp(Nlat),pii_tmp(Nlat)
     logical                          :: check_dim
     character(len=5)                 :: tmp_suffix
-    if(size(bath_,3).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1+mpiID,Nlat,mpiSIZE
-       check_dim = check_bath_dimension(bath_(:,:,ilat))
+       check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     call start_timer
@@ -335,7 +333,7 @@ contains
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
-       call ed_solver(bath_(:,:,ilat))
+       call ed_solver(bath_(ilat,:,:))
        Smats_tmp(1,ilat,:) = impSmats(1,1,1,1,:)
        Smats_tmp(2,ilat,:) = impSAmats(1,1,1,1,:)
        Sreal_tmp(1,ilat,:) = impSreal(1,1,1,1,:)
@@ -387,7 +385,7 @@ contains
              Delta_tmp(2,ilat,1,1,i) = -(Gmats(2,ilat,i)/cdet + Smats(2,ilat,i))
           endif
        end do
-       call chi2_fitgf(Delta_tmp(:,ilat,:,:,:),bath_(:,:,ilat),ispin=1)
+       call chi2_fitgf(Delta_tmp(:,ilat,:,:,:),bath_(ilat,:,:),ispin=1)
     end do
     call MPI_ALLREDUCE(Delta_tmp(:,:,1,1,:),Delta,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
   end subroutine ed_solve_sc_impurity_slab
@@ -408,13 +406,13 @@ contains
     integer :: ilat
     logical :: check_dim
     character(len=5) :: tmp_suffix
-    if(size(bath,3).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1,Nlat
-       check_dim = check_bath_dimension(bath(:,:,ilat))
+       check_dim = check_bath_dimension(bath(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
-       call init_ed_solver(bath(:,:,ilat))
+       call init_ed_solver(bath(ilat,:,:))
     end do
   end subroutine init_lattice_baths
 

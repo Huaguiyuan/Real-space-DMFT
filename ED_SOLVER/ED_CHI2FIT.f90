@@ -18,10 +18,10 @@
 !
 !########################################################################
 MODULE ED_CHI2FIT
-  USE COMMON_VARS
+  USE CONSTANTS
   USE OPTIMIZE, only:fmin_cg
   USE MATRIX,   only:matrix_inverse
-  USE IOTOOLS,  only:reg,free_unit 
+  USE IOTOOLS,  only:reg,free_unit,txtfy
   USE ED_INPUT_VARS
   USE ED_VARS_GLOBAL
   USE ED_BATH
@@ -107,11 +107,7 @@ contains
     real(8)                              :: w
     character(len=20)                  :: suffix
     integer                            :: unit
-    if(cg_scheme=='weiss')then
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Weiss field function."
-    else
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Delta function."
-    endif
+
     if(size(fg,1)/=Norb)stop"CHI2_FITGF: wrong dimension 1 in chi2_input"
     if(size(fg,2)/=Norb)stop"CHI2_FITGF: wrong dimension 2 in chi2_input"
     check= check_bath_dimension(bath_)
@@ -127,10 +123,12 @@ contains
     !
     select case(Cg_weight)
     case default
-       Wdelta=(/(1.d0,i=1,Ldelta)/)
+       Wdelta=dble(Ldelta)
     case(1)
-       Wdelta=(/(real(i,8),i=1,Ldelta)/)
+       Wdelta=1.d0
     case(2)
+       Wdelta=(/(real(i,8),i=1,Ldelta)/)
+    case(3)
        Wdelta=Xdelta
     end select
     !
@@ -143,12 +141,12 @@ contains
        a(1:Nbath)         = dmft_bath%e(ispin,iorb,1:Nbath)
        a(Nbath+1:2*Nbath) = dmft_bath%v(ispin,iorb,1:Nbath)
        if(cg_scheme=='weiss')then
-          call fmin_cg(a,chi2_weiss_irred,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+          call fmin_cg(a,chi2_weiss_irred,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
        else
-          call fmin_cg(a,chi2_delta_irred,dchi2_delta_irred,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+          call fmin_cg(a,chi2_delta_irred,dchi2_delta_irred,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
        endif
-       write(LOGfile,"(A,ES18.9,A,I5)") 'chi^2|iter = ',chi," | ",iter
-       if(ed_verbose)then
+       if(ed_verbose<5)write(LOGfile,"(A,ES18.9,A,I5,A)") 'chi^2|iter'//reg(ed_file_suffix)//'= ',chi," | ",iter,"  <--  Orb"//reg(txtfy(iorb))//" Spin"//reg(txtfy(ispin))
+       if(ed_verbose<2)then
           suffix="_orb"//reg(txtfy(iorb))//"_s"//reg(txtfy(ispin))//reg(ed_file_suffix)
           unit=free_unit()
           open(unit,file="chi2fit_results"//reg(suffix)//".ed",position="append")
@@ -158,11 +156,14 @@ contains
        dmft_bath%e(ispin,iorb,1:Nbath) = a(1:Nbath)
        dmft_bath%v(ispin,iorb,1:Nbath) = a(Nbath+1:2*Nbath)
     enddo
-    if(ed_verbose)call write_bath(dmft_bath,LOGfile)
-    if(ed_verbose)call write_fit_result(ispin)
+    if(ed_verbose<2)call write_bath(dmft_bath,LOGfile)
+    unit=free_unit()
+    open(unit,file=trim(Hfile)//trim(ed_file_suffix)//".restart")
+    call write_bath(dmft_bath,unit)
+    close(unit)
+    if(ed_verbose<3)call write_fit_result(ispin)
     call copy_bath(dmft_bath,bath_)
     call deallocate_bath(dmft_bath)
-    print*," "
     deallocate(Fdelta,Xdelta,Wdelta)
     !
   contains
@@ -342,11 +343,6 @@ contains
     real(8)                              :: w
     character(len=20)                    :: suffix
     integer                              :: unit
-    if(cg_scheme=='weiss')then
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Weiss field function."
-    else
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Delta function."
-    endif
     if(size(fg,1)/=2)stop"CHI2_FITGF: wrong dimension 1 in chi2_input"
     if(size(fg,2)/=Norb)stop"CHI2_FITGF: wrong dimension 2 in chi2_input"
     if(size(fg,3)/=Norb)stop"CHI2_FITGF: wrong dimension 3 in chi2_input"
@@ -363,10 +359,12 @@ contains
     !
     select case(Cg_weight)
     case default
-       Wdelta=(/(1.d0,i=1,Ldelta)/)
+       Wdelta=dble(Ldelta)
     case(1)
-       Wdelta=(/(real(i,8),i=1,Ldelta)/)
+       Wdelta=1.d0
     case(2)
+       Wdelta=(/(real(i,8),i=1,Ldelta)/)
+    case(3)
        Wdelta=Xdelta
     end select
     !
@@ -381,12 +379,12 @@ contains
        a(Nbath+1:2*Nbath) = dmft_bath%d(ispin,iorb,1:Nbath)
        a(2*Nbath+1:3*Nbath) = dmft_bath%v(ispin,iorb,1:Nbath)
        if(cg_scheme=='weiss')then
-          call fmin_cg(a,chi2_weiss_irred_sc,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+          call fmin_cg(a,chi2_weiss_irred_sc,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
        else
-          call fmin_cg(a,chi2_delta_irred_sc,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+          call fmin_cg(a,chi2_delta_irred_sc,dchi2_delta_irred_sc,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
        endif
-       write(LOGfile,"(A,ES18.9,A,I5)") 'chi^2|iter = ',chi," | ",iter
-       if(ed_verbose)then
+       if(ed_verbose<5)write(LOGfile,"(A,ES18.9,A,I5,A)") 'chi^2|iter'//reg(ed_file_suffix)//'=',chi," | ",iter,"  <--  Orb"//reg(txtfy(iorb))//" Spin"//reg(txtfy(ispin))
+       if(ed_verbose<2)then
           suffix="_orb"//reg(txtfy(iorb))//"_s"//reg(txtfy(ispin))//reg(ed_file_suffix)
           unit=free_unit()
           open(unit,file="chi2fit_results"//reg(suffix)//".ed",position="append")
@@ -397,11 +395,14 @@ contains
        dmft_bath%d(ispin,iorb,1:Nbath) = a(Nbath+1:2*Nbath)
        dmft_bath%v(ispin,iorb,1:Nbath) = a(2*Nbath+1:3*Nbath)
     enddo
-    if(ed_verbose)call write_bath(dmft_bath,LOGfile)
-    if(ed_verbose)call write_fit_result(ispin)
+    if(ed_verbose<2)call write_bath(dmft_bath,LOGfile)
+    unit=free_unit()
+    open(unit,file=trim(Hfile)//trim(ed_file_suffix)//".restart")
+    call write_bath(dmft_bath,unit)
+    close(unit)
+    if(ed_verbose<3)call write_fit_result(ispin)
     call copy_bath(dmft_bath,bath_)
     call deallocate_bath(dmft_bath)
-    print*," "
     deallocate(Fdelta,Xdelta,Wdelta)
     !
   contains
@@ -463,9 +464,31 @@ contains
     do i=1,Ldelta
        g0(:,i)   = fg_delta_irred_sc(xdelta(i),iorb,a)
     enddo
-    chi2_sc=sum(abs(Fdelta(1,:)-g0(1,:))**2/Wdelta(:)) 
-    chi2_sc=chi2_sc + sum(abs(Fdelta(2,:)-g0(2,:))**2/Wdelta(:)) 
+    chi2_sc=sum(abs(Fdelta(1,:)-g0(1,:))**2/Wdelta(:)) + sum(abs(Fdelta(2,:)-g0(2,:))**2/Wdelta(:)) 
   end function chi2_delta_irred_sc
+  ! the analytic GRADIENT of \chi^2
+  !+-------------------------------------------------------------+
+  function dchi2_delta_irred_sc(a) result(dchi2_sc)
+    real(8),dimension(:)                   ::  a
+    complex(8),dimension(2,Ldelta)         ::  g0
+    real(8),dimension(size(a))             ::  dchi2_sc,df
+    complex(8),dimension(2,Ldelta,size(a)) ::  dg0
+    integer                                ::  i,j,iorb
+    dchi2_sc = 0.d0 
+    df = 0.d0
+    iorb=Orb_indx
+    do i=1,Ldelta
+       g0(:,i)   = fg_delta_irred_sc(xdelta(i),iorb,a)
+       dg0(:,i,:)= grad_fg_delta_irred_sc(xdelta(i),iorb,a)
+    enddo
+    do j=1,size(a)
+       df(j) = &
+            sum( dreal(Fdelta(1,:)-g0(1,:))*dreal(dg0(1,:,j))/Wdelta(:) ) + sum(  dimag(Fdelta(1,:)-g0(1,:))*dimag(dg0(1,:,j))/Wdelta(:) ) +&
+            sum( dreal(Fdelta(2,:)-g0(2,:))*dreal(dg0(2,:,j))/Wdelta(:) ) + sum(  dimag(Fdelta(2,:)-g0(2,:))*dimag(dg0(2,:,j))/Wdelta(:) )
+    enddo
+    dchi2_sc=-2.d0*df
+  end function dchi2_delta_irred_sc
+
   ! the \Delta_Anderson function used in \chi^2 and d\chi^2
   ! \Delta = \sum_l V_l^2/(iw-e_l)
   !+-------------------------------------------------------------+
@@ -484,6 +507,32 @@ contains
     gg(1) = -sum(vps(:)**2*(x+eps(:))/(dimag(x)**2+eps(:)**2+dps(:)**2))
     gg(2) =  sum(dps(:)*vps(:)**2/(dimag(x)**2+eps(:)**2+dps(:)**2))
   end function fg_delta_irred_sc
+  ! the gradient d\Delta_Anderson function used in d\chi^2
+  ! d\Delta = \grad_{e_k,d_k,V_k}Delta(e_k,d_k,V_k)
+  !+-------------------------------------------------------------+
+  function grad_fg_delta_irred_sc(w,iorb,a) result(dgz)
+    real(8)                         :: w
+    real(8),dimension(:)            :: a
+    real(8),dimension(size(a)/3)    :: eps,vps,dps
+    complex(8),dimension(2,size(a)) :: dgz
+    complex(8)                      :: x,den
+    integer                         :: i,iorb,Nb
+    Nb=size(a)/3
+    eps=a(1:Nb)
+    dps=a(Nb+1:2*Nb)
+    vps=a(2*Nb+1:3*Nb)
+    x = xi*w
+    do i=1,Nb
+       den = dimag(x)**2+eps(i)**2+dps(i)**2
+       dgz(1,i) = -vps(i)*vps(i)*(1.d0/den - 2.d0*eps(i)*(x+eps(i))/den**2)
+       dgz(1,i+Nb) = 2.d0*vps(i)*vps(i)*dps(i)*(x+eps(i))/den**2
+       dgz(1,i+2*Nb) = -2.d0*vps(i)*(x+eps(i))/den
+       !
+       dgz(2,i) = -2.d0*vps(i)*vps(i)*dps(i)*eps(i)/den**2
+       dgz(2,i+Nb) = vps(i)*vps(i)*(1.d0/den - 2.d0*dps(i)*dps(i)/den**2)
+       dgz(2,i+2*Nb) = 2.d0*vps(i)*dps(i)/den
+    enddo
+  end function grad_fg_delta_irred_sc
 
 
   !+-------------------------------------------------------------+
@@ -555,12 +604,6 @@ contains
     real(8)                              :: w
     character(len=20)                    :: suffix
     integer                              :: unit
-    !
-    if(cg_scheme=='weiss')then
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Weiss field function."
-    else
-       if(ed_verbose)write(LOGfile,"(A)")"CHI2FIT: Delta function."
-    endif
     if(size(fg,1)/=Norb)stop "CHI2FIT: wrong dimension 1 in chi2_input"
     if(size(fg,2)/=Norb)stop "CHI2FIT: wrong dimension 2 in chi2_input"
     check= check_bath_dimension(bath_)
@@ -588,10 +631,12 @@ contains
     forall(i=1:Ldelta)Xdelta(i)=pi/beta*real(2*i-1,8)
     select case(Cg_weight)
     case default
-       Wdelta=(/(1.d0,i=1,Ldelta)/)
+       Wdelta=dble(Ldelta)
     case(1)
-       Wdelta=(/(dble(i),i=1,Ldelta)/)
+       Wdelta=1.d0
     case(2)
+       Wdelta=(/(real(i,8),i=1,Ldelta)/)
+    case(3)
        Wdelta=Xdelta
     end select
     !
@@ -599,23 +644,27 @@ contains
     Spin_indx=ispin
     a(:) = bath_(ispin,:)
     if(cg_scheme=='weiss')then
-       call fmin_cg(a,chi2_weiss_hybrd,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+       call fmin_cg(a,chi2_weiss_hybrd,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
     else
-       call fmin_cg(a,chi2_delta_hybrd,dchi2_delta_hybrd,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=ed_verbose)
+       call fmin_cg(a,chi2_delta_hybrd,dchi2_delta_hybrd,iter,chi,itmax=cg_niter,ftol=cg_Ftol,iverbose=.false.)
     endif
     bath_(ispin,:) = a(:)
     call set_bath(bath_,dmft_bath)
-    if(ed_verbose)call write_bath(dmft_bath,LOGfile)
-    if(ed_verbose)call write_fit_result(ispin)
-    call deallocate_bath(dmft_bath)
-    write(LOGfile,"(A,ES18.9,A,I5)") 'chi^2|iter = ',chi," | ",iter
-    if(ed_verbose)then
+    if(ed_verbose<5)write(LOGfile,"(A,ES18.9,A,I5)") 'chi^2|iter'//reg(ed_file_suffix)//'=',chi," | ",iter,"  <--  all Orbs, Spin"//reg(txtfy(ispin))
+    if(ed_verbose<2)then
        suffix="_ALLorb_s"//reg(txtfy(ispin))//reg(ed_file_suffix)
        unit=free_unit()
        open(unit,file="chi2fit_results"//reg(suffix)//".ed",position="append")
        write(unit,"(ES18.9,1x,I5)") chi,iter
        close(unit)
     endif
+    if(ed_verbose<2)call write_bath(dmft_bath,LOGfile)
+    unit=free_unit()
+    open(unit,file=trim(Hfile)//trim(ed_file_suffix)//".restart")
+    call write_bath(dmft_bath,unit)
+    close(unit)
+    if(ed_verbose<3)call write_fit_result(ispin)
+    call deallocate_bath(dmft_bath)
     deallocate(Fdelta,Xdelta,Wdelta)
     deallocate(getIorb,getJorb)
   contains

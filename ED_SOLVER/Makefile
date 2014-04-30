@@ -43,7 +43,7 @@ RDMFT_INPUT_VARS:
 #$(FC) $(FLAG) -c ../$@.f90 $(SFINCLUDE) $(MOPT)../ 
 clean: 
 	@echo "Cleaning:"
-	@rm -f *.mod *.o *~ revision.inc
+	@rm -f *.mod *.o *~ revision.inc *.a
 
 sync_ed:
 	@rsync -avP --del --exclude=ED_INPUT_VARS.f90 $(HOME)/projects_src/ED/*.f90 .

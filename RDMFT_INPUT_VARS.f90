@@ -2,7 +2,7 @@
 ! PROGRAM  : RDMFT_VARS_GLOBAL
 !###############################################################
 module RDMFT_INPUT_VARS
-  USE COMMON_VARS
+  USE CONSTANTS
   USE PARSE_INPUT
   USE MPI
   implicit none
@@ -71,7 +71,7 @@ module RDMFT_INPUT_VARS
   real(8)              :: nerr                !fix density threshold. a loop over from 1.d-1 to required nerr is performed
   real(8)              :: ndelta              !initial chemical potential step
   integer              :: niter
-  logical              :: ed_verbose !verbose flag:
+  integer              :: ed_verbose
 
   !Some parameters for function dimension:
   !=========================================================
@@ -165,7 +165,7 @@ contains
     call parse_input_variable(Hfile,"HFILE",INPUTunit,default="hamiltonian")
     call parse_input_variable(LOGfile,"LOGFILE",INPUTunit,default=6)
     call parse_input_variable(ed_file_suffix,"ED_FILE_SUFFIX",INPUTunit,default=".ed")
-    call parse_input_variable(ed_verbose,"ED_VERBOSE",INPUTunit,default=.true.)
+    call parse_input_variable(ed_verbose,"ED_VERBOSE",INPUTunit,default=0)
     call substring_delete(ed_file_suffix,".ed")
     call substring_delete(Hfile,".restart")
     call substring_delete(Hfile,".ed")

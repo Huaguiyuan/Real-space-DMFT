@@ -1,5 +1,6 @@
 module RDMFT_VARS_GLOBAL
-  USE COMMON_VARS
+  USE CONSTANTS
+  USE MPI_VARS
   USE MPI
   implicit none
 
