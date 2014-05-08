@@ -63,12 +63,17 @@ contains
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
-    call start_timer
+    if(mpiID==0)call start_timer
     Smats_tmp = zero
     Sreal_tmp = zero
     Delta_tmp = zero
     nii_tmp   = 0.d0
     dii_tmp   = 0.d0
+    Smats = zero
+    Sreal = zero
+    Delta = zero
+    nii   = 0.d0
+    dii   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPUTITY PROBLEM -+!
     if(mpiID/=0)LOGfile = 800+mpiID
     do ilat=1+mpiID,Nlat,mpiSIZE
@@ -79,9 +84,9 @@ contains
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
-       call eta(ilat,Nlat,file="Impurity.eta")
+       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(Sreal_tmp,Sreal,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -134,13 +139,19 @@ contains
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
-    call start_timer
+    if(mpiID==0)call start_timer
     Smats_tmp = zero
     Sreal_tmp = zero
     Delta_tmp = zero
     nii_tmp   = 0.d0
     dii_tmp   = 0.d0
     pii_tmp   = 0.d0
+    Smats = zero
+    Sreal = zero
+    Delta = zero
+    nii   = 0.d0
+    dii   = 0.d0
+    pii   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPUTITY PROBLEM -+!
     if(mpiID/=0)LOGfile = 800+mpiID
     do ilat=1+mpiID,Nlat,mpiSIZE
@@ -155,9 +166,9 @@ contains
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
        pii_tmp(ilat)   = ed_phisc(1)
-       call eta(ilat,Nlat,file="Impurity.eta")
+       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(Sreal_tmp,Sreal,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -229,12 +240,17 @@ contains
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
-    call start_timer
+    if(mpiID==0)call start_timer
     Smats_tmp = zero
     Sreal_tmp = zero
     Delta_tmp = zero
     nii_tmp   = 0.d0
     dii_tmp   = 0.d0
+    Smats = zero
+    Sreal = zero
+    Delta = zero
+    nii   = 0.d0
+    dii   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPURITY PROBLEM -+!
     LOGfile = 800+mpiID
     if(mpiID==0) LOGfile=6
@@ -247,9 +263,9 @@ contains
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
-       call eta(ilat,Nlat,file="Impurity.eta")
+       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(Sreal_tmp,Sreal,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -319,13 +335,19 @@ contains
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
-    call start_timer
+    if(mpiID==0)call start_timer
     Smats_tmp = zero
     Sreal_tmp = zero
     Delta_tmp = zero
     nii_tmp   = 0.d0
     dii_tmp   = 0.d0
     pii_tmp   = 0.d0
+    Smats = zero
+    Sreal = zero
+    Delta = zero
+    nii   = 0.d0
+    dii   = 0.d0
+    pii   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPURITY PROBLEM -+!
     LOGfile = 800+mpiID
     if(mpiID==0) LOGfile=6
@@ -341,9 +363,9 @@ contains
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
        pii_tmp(ilat)   = ed_phisc(1)
-       call eta(ilat,Nlat,file="Impurity.eta")
+       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(Sreal_tmp,Sreal,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)

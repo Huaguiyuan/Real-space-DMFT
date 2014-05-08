@@ -75,8 +75,8 @@ contains
     complex(8) :: fg(Nlat,Lmats),sigma(Nlat,Lmats)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lmats)
     integer    :: i,is
-    if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    call start_timer
+    if(mpiID==0)write(LOGfile,*)"Get local GF Mats (id=0):"
+    if(mpiID==0)call start_timer
     gf_tmp=zero
     fg=zero
     do i=1+mpiID,Lmats,mpiSIZE
@@ -89,9 +89,9 @@ contains
        do is=1,Nlat
           gf_tmp(is,i) = Gloc(is,is)
        enddo
-       call eta(i,Lmats,file="Glocal.eta")
+       if(mpiID==0)call eta(i,Lmats,file="Glocal_mats.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_gloc_mats_lattice
@@ -101,8 +101,8 @@ contains
     complex(8) :: fg(Nlat,Lreal),sigma(Nlat,Lreal)
     complex(8) :: zeta,Gloc(Nlat,Nlat),gf_tmp(Nlat,1:Lreal)
     integer    :: i,is
-    if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    call start_timer
+    if(mpiID==0)write(LOGfile,*)"Get local GF Real (id=0):"
+    if(mpiID==0)call start_timer
     gf_tmp=zero 
     fg=zero
     do i=1+mpiID,Lreal,mpiSIZE
@@ -115,9 +115,9 @@ contains
        do is=1,Nlat
           gf_tmp(is,i) = Gloc(is,is)
        enddo
-       call eta(i,Lreal,file="Glocal.eta")
+       if(mpiID==0)call eta(i,Lreal,file="Glocal_real.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_gloc_real_lattice
@@ -131,8 +131,8 @@ contains
     complex(8) :: fg(2,Nlat,Lmats),sigma(2,Nlat,Lmats)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lmats)
     integer    :: i,is
-    if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    call start_timer
+    if(mpiID==0)write(LOGfile,*)"Get local GF Mats (id=0):"
+    if(mpiID==0)call start_timer
     fg=zero
     gf_tmp=zero
     do i=1+mpiID,Lmats,mpiSIZE
@@ -151,9 +151,9 @@ contains
           !##ACTHUNG!!
           gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
        end forall
-       call eta(i,Lmats,file="Glocal.eta")
+       if(mpiID==0)call eta(i,Lmats,file="Glocal_mats.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_sc_gloc_mats_lattice
@@ -163,8 +163,8 @@ contains
     complex(8) :: fg(2,Nlat,Lreal),sigma(2,Nlat,Lreal)
     complex(8) :: Gloc(2*Nlat,2*Nlat),gf_tmp(2,Nlat,Lreal),zeta1,zeta2
     integer    :: i,is
-    if(mpiID==0)write(LOGfile,*)"Get local GF:"
-    call start_timer
+    if(mpiID==0)write(LOGfile,*)"Get local GF Real (id=0):"
+    if(mpiID==0)call start_timer
     fg=zero ; gf_tmp=zero
     do i=1+mpiID,Lreal,mpiSIZE
        Gloc=zero
@@ -192,9 +192,9 @@ contains
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Nlat+is)
        end forall
-       call eta(i,Lreal,file="Glocal.eta")
+       if(mpiID==0)call eta(i,Lreal,file="Glocal_real.eta")
     enddo
-    call stop_timer
+    if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   end subroutine get_sc_gloc_real_lattice

@@ -12,7 +12,7 @@ all: libed_rdmft.a
 #================DEBUGGIN COMPILATION=====================================
 debug: FLAG=$(DEB)
 debug: ARGS=$(SFLIBS_DEB)
-debug:libipt_rdmft_deb.a
+debug:libed_rdmft_deb.a
 
 
 

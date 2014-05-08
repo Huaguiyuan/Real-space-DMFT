@@ -16,18 +16,22 @@ BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 
 OBJS = RDMFT_INPUT_VARS.o RDMFT_VARS_GLOBAL.o RDMFT_AUX_FUNX.o RDMFT_WRAP_IPT.o RDMFT_WRAP_ED.o RDMFT.o
 
+
 #=================STANDARD COMPILATION====================================
-all: FLAG=$(STD)
-all: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS)
-all: compile
+normal: FLAG=$(STD)
+normal: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS)
+normal:compile
 
 #================DEBUGGIN COMPILATION=====================================
 debug: FLAG=$(DEB)
-debug: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft -led_rdmft $(SFLIBS_DEB)
+debug: ARGS= -I./IPT_SOLVER -I./ED_SOLVER -L./IPT_SOLVER -L./ED_SOLVER -lipt_rdmft_deb -led_rdmft_deb $(SFLIBS_DEB)
 debug: compile
 
-lib: ipt_solver ed_solver
+all: lib normal
+all_debug: lib_debug debug
 
+lib: ipt_solver ed_solver
+lib_debug: ipt_solver_debug ed_solver_debug
 
 #=================STANDARD COMPILATION====================================
 compile: version $(OBJS)
@@ -43,6 +47,12 @@ ipt_solver:
 
 ed_solver:
 	@make -C ED_SOLVER/
+
+ipt_solver_debug:
+	@make debug -C IPT_SOLVER/
+
+ed_solver_debug:
+	@make debug -C ED_SOLVER/
 
 .f90.o:	
 	$(FC) $(FLAG) -c $< $(SFINCLUDE) -I./IPT_SOLVER -I./ED_SOLVER

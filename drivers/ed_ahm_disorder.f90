@@ -65,7 +65,7 @@ program ed_ahm_disorder
 
   !random energies 
   allocate(erandom(Nlat))
-  call random_seed(idum)
+  call random_seed(put=[idum])
   call random_number(erandom)
   erandom=(2.d0*erandom-1.d0)*Wdis/2.d0
   call store_data("erandomVSisite.data",erandom)
