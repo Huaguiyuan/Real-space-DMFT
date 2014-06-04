@@ -11,6 +11,7 @@ DIR=drivers
 #EXE=ed_ahm_squareRDMFT
 #EXE=ed_ahm_slabRDMFT
 EXE=ed_ahm_disorder
+#EXE=ed_hm_disorder
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 

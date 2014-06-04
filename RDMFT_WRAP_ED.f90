@@ -9,9 +9,6 @@ module RDMFT_WRAP_ED
   USE RDMFT_VARS_GLOBAL
   USE RDMFT_AUX_FUNX
   USE TIMER
-  USE STATISTICS
-  USE SQUARE_LATTICE
-  USE TOOLs, only:get_free_dos
   !Impurity solver interface
   USE DMFT_ED
   implicit none
@@ -28,7 +25,6 @@ module RDMFT_WRAP_ED
   public :: ed_solve_impurity
   public :: ed_solve_sc_impurity
   public :: init_lattice_baths
-
 
 
 contains
@@ -64,21 +60,17 @@ contains
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     if(mpiID==0)call start_timer
-    Smats_tmp = zero
-    Sreal_tmp = zero
-    Delta_tmp = zero
-    nii_tmp   = 0.d0
-    dii_tmp   = 0.d0
-    Smats = zero
-    Sreal = zero
-    Delta = zero
-    nii   = 0.d0
-    dii   = 0.d0
+    Smats = zero ; Smats_tmp = zero
+    Sreal = zero ; Sreal_tmp = zero
+    Delta = zero ; Delta_tmp = zero
+    nii   = 0.d0 ; nii_tmp   = 0.d0
+    dii   = 0.d0 ; dii_tmp   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPUTITY PROBLEM -+!
     if(mpiID/=0)LOGfile = 800+mpiID
     do ilat=1+mpiID,Nlat,mpiSIZE
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
+       Hloc(1,1,1,1)=eloc(ilat)
        call ed_solver(bath_(ilat,:,:))
        Smats_tmp(ilat,:) = impSmats(1,1,1,1,:)
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
@@ -134,30 +126,25 @@ contains
     real(8)                  :: nii_tmp(Nlat),dii_tmp(Nlat),pii_tmp(Nlat)
     logical                  :: check_dim
     character(len=5)         :: tmp_suffix
-    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    if(size(bath_,1)/=Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
     do ilat=1+mpiID,Nlat,mpiSIZE
        check_dim = check_bath_dimension(bath_(ilat,:,:))
-       if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
+       if(.not.check_dim) stop "ed_solve_sc_impurity_lattice: wrong bath size dimension 1 or 2 "
     end do
     if(mpiID==0)call start_timer
-    Smats_tmp = zero
-    Sreal_tmp = zero
-    Delta_tmp = zero
-    nii_tmp   = 0.d0
-    dii_tmp   = 0.d0
-    pii_tmp   = 0.d0
-    Smats = zero
-    Sreal = zero
-    Delta = zero
-    nii   = 0.d0
-    dii   = 0.d0
-    pii   = 0.d0
+    Smats = zero ; Smats_tmp = zero
+    Sreal = zero ; Sreal_tmp = zero
+    Delta = zero ; Delta_tmp = zero
+    nii   = 0.d0 ; nii_tmp   = 0.d0
+    dii   = 0.d0 ; dii_tmp   = 0.d0
+    pii   = 0.d0 ; pii_tmp   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPUTITY PROBLEM -+!
     if(mpiID/=0)LOGfile = 800+mpiID
     do ilat=1+mpiID,Nlat,mpiSIZE
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
+       Hloc(1,1,1,1)=eloc(ilat)
        call ed_solver(bath_(ilat,:,:))
        Smats_tmp(1,ilat,:) = impSmats(1,1,1,1,:)
        Smats_tmp(2,ilat,:) = impSAmats(1,1,1,1,:)
@@ -213,11 +200,12 @@ contains
   ! PURPOSE: solve impurity problem & get Glocal for a mixed real-k space problem 
   !          fit new bath                                                         
   !+-----------------------------------------------------------------------------+!
-  subroutine ed_solve_impurity_slab(bath_,eloc,Nx,Delta,Gmats,Greal,Smats,Sreal,Usite)
+  subroutine ed_solve_impurity_slab(bath_,eloc,epsik,wt,Delta,Gmats,Greal,Smats,Sreal,Usite)
     real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                          :: eloc(Nlat)
     real(8),optional                 :: Usite(Nlat)
-    integer                          :: Nx
+    real(8),dimension(:)             :: epsik
+    real(8),dimension(size(epsik))   :: wt
     complex(8),intent(inout)         :: Delta(Nlat,Lmats)
     complex(8),intent(inout)         :: Gmats(Nlat,Lmats)
     complex(8),intent(inout)         :: Greal(Nlat,Lreal)
@@ -230,27 +218,22 @@ contains
     complex(8)                       :: Delta_tmp(Nlat,Norb,Norb,Lmats)
     complex(8)                       :: calG(Lmats),cdet
     integer                          :: ilat,i,ik
-    real(8),dimension(:),allocatable :: epsik,wt
     integer                          :: Lk
     real(8)                          :: nii_tmp(Nlat),dii_tmp(Nlat)
     logical                          :: check_dim
     character(len=5)                 :: tmp_suffix
     if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    Lk=size(epsik)
     do ilat=1+mpiID,Nlat,mpiSIZE
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     if(mpiID==0)call start_timer
-    Smats_tmp = zero
-    Sreal_tmp = zero
-    Delta_tmp = zero
-    nii_tmp   = 0.d0
-    dii_tmp   = 0.d0
-    Smats = zero
-    Sreal = zero
-    Delta = zero
-    nii   = 0.d0
-    dii   = 0.d0
+    Smats = zero ; Smats_tmp = zero
+    Sreal = zero ; Sreal_tmp = zero
+    Delta = zero ; Delta_tmp = zero
+    nii   = 0.d0 ; nii_tmp   = 0.d0
+    dii   = 0.d0 ; dii_tmp   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPURITY PROBLEM -+!
     LOGfile = 800+mpiID
     if(mpiID==0) LOGfile=6
@@ -258,6 +241,7 @@ contains
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
+       Hloc(1,1,1,1)=eloc(ilat)
        call ed_solver(bath_(ilat,:,:))
        Smats_tmp(ilat,:) = impSmats(1,1,1,1,:)
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
@@ -271,11 +255,6 @@ contains
     call MPI_ALLREDUCE(nii_tmp,nii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(dii_tmp,dii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     !+- GET GLOC -+!
-    Lk   = square_lattice_dimension(Nx,Nx)
-    allocate(epsik(Lk),wt(Lk))
-    wt   = square_lattice_structure(Lk,Nx,Nx)
-    epsik= square_lattice_dispersion_array(Lk,ts)
-    call get_free_dos(epsik,wt)
     Gmats=zero
     Greal=zero
     call start_timer
@@ -285,8 +264,6 @@ contains
        call get_gloc_real(eloc,Sreal,Greal,epsik(ik),wt(ik))
        call eta(ik,Lk)
     end do
-    deallocate(epsik,wt)
-    call square_lattice_deallocate
     !+- GET HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
        write(tmp_suffix,'(I4.4)') ilat
@@ -308,11 +285,12 @@ contains
   !+------------------------------------------------------------+!
   ! SC-version       
   !+------------------------------------------------------------+!
-  subroutine ed_solve_sc_impurity_slab(bath_,eloc,Nx,Delta,Gmats,Greal,Smats,Sreal,Usite)
+  subroutine ed_solve_sc_impurity_slab(bath_,eloc,epsik,wt,Delta,Gmats,Greal,Smats,Sreal,Usite)
     real(8)                          :: bath_(:,:,:),bath_tmp(size(bath_,2),size(bath_,3))
     real(8)                          :: eloc(Nlat)
     real(8),optional                 :: Usite(Nlat)
-    integer                          :: Nx
+    real(8),dimension(:)             :: epsik
+    real(8),dimension(size(epsik))   :: wt
     complex(8),intent(inout)         :: Delta(2,Nlat,Lmats)
     complex(8),intent(inout)         :: Gmats(2,Nlat,Lmats)
     complex(8),intent(inout)         :: Greal(2,Nlat,Lreal)
@@ -325,29 +303,23 @@ contains
     complex(8)                       :: Delta_tmp(2,Nlat,Norb,Norb,Lmats)
     complex(8)                       :: calG(2,Lmats),cdet
     integer                          :: ilat,i,ik
-    real(8),dimension(:),allocatable :: epsik,wt
     integer                          :: Lk
     real(8)                          :: nii_tmp(Nlat),dii_tmp(Nlat),pii_tmp(Nlat)
     logical                          :: check_dim
     character(len=5)                 :: tmp_suffix
     if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    Lk=size(epsik)
     do ilat=1+mpiID,Nlat,mpiSIZE
        check_dim = check_bath_dimension(bath_(ilat,:,:))
        if(.not.check_dim) stop "init_lattice_bath: wrong bath size dimension 1 or 2 "
     end do
     if(mpiID==0)call start_timer
-    Smats_tmp = zero
-    Sreal_tmp = zero
-    Delta_tmp = zero
-    nii_tmp   = 0.d0
-    dii_tmp   = 0.d0
-    pii_tmp   = 0.d0
-    Smats = zero
-    Sreal = zero
-    Delta = zero
-    nii   = 0.d0
-    dii   = 0.d0
-    pii   = 0.d0
+    Smats = zero ; Smats_tmp = zero
+    Sreal = zero ; Sreal_tmp = zero
+    Delta = zero ; Delta_tmp = zero
+    nii   = 0.d0 ; nii_tmp   = 0.d0
+    dii   = 0.d0 ; dii_tmp   = 0.d0
+    pii   = 0.d0 ; pii_tmp   = 0.d0
     !+- SOLVE SITE DEPENDENT IMPURITY PROBLEM -+!
     LOGfile = 800+mpiID
     if(mpiID==0) LOGfile=6
@@ -355,6 +327,7 @@ contains
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        if(present(Usite)) Uloc(1)=Usite(ilat)
+       Hloc(1,1,1,1)=eloc(ilat)
        call ed_solver(bath_(ilat,:,:))
        Smats_tmp(1,ilat,:) = impSmats(1,1,1,1,:)
        Smats_tmp(2,ilat,:) = impSAmats(1,1,1,1,:)
@@ -372,11 +345,6 @@ contains
     call MPI_ALLREDUCE(dii_tmp,dii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     call MPI_ALLREDUCE(pii_tmp,pii,Nlat,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,MPIerr)
     !+- GET GLOC -+!
-    Lk   = square_lattice_dimension(Nx,Nx)
-    allocate(epsik(Lk),wt(Lk))
-    wt   = square_lattice_structure(Lk,Nx,Nx)
-    epsik= square_lattice_dispersion_array(Lk,ts)
-    call get_free_dos(epsik,wt)
     Gmats=zero
     Greal=zero
     call start_timer
@@ -386,8 +354,6 @@ contains
        call get_sc_gloc_real(eloc,Sreal,Greal,epsik(ik),wt(ik))
        call eta(ik,Lk)
     end do
-    deallocate(epsik,wt)
-    call square_lattice_deallocate
     !+- GET HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
        write(tmp_suffix,'(I4.4)') ilat
@@ -436,6 +402,7 @@ contains
        ed_file_suffix="_site"//trim(tmp_suffix)
        call init_ed_solver(bath(ilat,:,:))
     end do
+    call MPI_Barrier(MPI_COMM_WORLD,mpiERR)
   end subroutine init_lattice_baths
 
 

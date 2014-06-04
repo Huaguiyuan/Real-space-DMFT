@@ -4,6 +4,7 @@
 module RDMFT_INPUT_VARS
   USE CONSTANTS
   USE PARSE_INPUT
+  USE MPI_VARS
   USE MPI
   implicit none
 
@@ -52,7 +53,7 @@ module RDMFT_INPUT_VARS
   logical              :: HFmode              !flag for HF interaction form U(n-1/2)(n-1/2) VS Unn
   real(8)              :: cutoff              !cutoff for spectral summation
   real(8)              :: dmft_error          !dmft convergence threshold
-  real(8)                                     :: sb_field            !symmetry breaking field
+  real(8)              :: sb_field            !symmetry breaking field
   integer              :: lanc_niter          !Max number of Lanczos iterations
   integer              :: lanc_ngfiter        !Max number of iteration in resolvant tri-diagonalization
   integer              :: lanc_nstates_sector !Max number of required eigenvalues per sector
@@ -61,6 +62,8 @@ module RDMFT_INPUT_VARS
   real(8)              :: cg_Ftol             !Tolerance in the cg fit
   integer              :: cg_Weight           !CGfit mode 0=normal,1=1/n weight, 2=1/w weight
   character(len=5)     :: cg_Scheme           !fit scheme: delta (default), weiss for G0^
+  integer              :: cg_stop             !fit stop condition:0-3, 0=default
+  real(8)              :: cg_eps              !fit eps tolerance
   logical              :: finiteT             !flag for finite temperature calculation
   character(len=4)     :: ed_method           !flag to set ed method solution: lanc=lanczos method, full=full diagonalization
   character(len=1)     :: ed_type             !flag to set real or complex Ham: d=symmetric H (real), c=hermitian H (cmplx)
@@ -158,6 +161,8 @@ contains
     call parse_input_variable(cg_scheme,"CG_SCHEME",INPUTunit,default='delta')
     call parse_input_variable(cg_ftol,"CG_FTOL",INPUTunit,default=1.d-3)
     call parse_input_variable(cg_weight,"CG_WEIGHT",INPUTunit,default=0)
+    call parse_input_variable(cg_stop,"CG_STOP",INPUTunit,default=0,comment="Conjugate-Gradient stopping condition.")
+    call parse_input_variable(cg_eps,"CG_EPS",INPUTunit,default=0.0001d0,comment="Conjugate-Gradient eps tolerance.")
     call parse_input_variable(ed_Type,"ED_TYPE",INPUTunit,default='d')
     call parse_input_variable(ed_Supercond,"ED_SUPERCOND",INPUTunit,default=.false.)
     call parse_input_variable(ed_Method,"ED_METHOD",INPUTunit,default='lanc')
@@ -169,9 +174,9 @@ contains
     call substring_delete(ed_file_suffix,".ed")
     call substring_delete(Hfile,".restart")
     call substring_delete(Hfile,".ed")
-    call check_input_file(INPUTunit)
     Ltau=max(int(beta),Ltau)
     U = Uloc(1)
+    if(mpiID==0)call save_input_file(INPUTunit)
   end subroutine rdmft_read_input
 
 
