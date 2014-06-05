@@ -22,13 +22,14 @@ program ed_slab
   complex(8),allocatable,dimension(:,:,:) :: Gmats,Greal !local green's functions
   complex(8),allocatable,dimension(:,:,:) :: Delta      
   real(8),allocatable,dimension(:)        :: erandom,Usite
-  real(8),allocatable,dimension(:,:,:)    :: bath
+  real(8),allocatable,dimension(:,:,:)    :: bath,bath_old
+  real(8),allocatable,dimension(:)        :: epsik,wt
   logical                                 :: converged
   real(8)                                 :: Uperiod,Uamplitude
-  real(8)                                 :: r
+  real(8)                                 :: r,wmixing
   integer                                 :: i,is,iloop
   integer                                 :: Nb(2),Nx,Lk
-  
+
 
   !+-------------------------------------------------------------------+!
   ! START MPI !
@@ -38,25 +39,24 @@ program ed_slab
   write(*,"(A,I4,A,I4,A)")'Processor ',mpiID,' of ',mpiSIZE,' is alive'
   call MPI_BARRIER(MPI_COMM_WORLD,mpiERR)
   !+-------------------------------------------------------------------+!
-  
+
   !+-------------------------------------------------------------------+!
   ! READ INPUT FILES !
   call rdmft_read_input("inputRDMFT.in")
   store_size=1024
   Nlat = Nside
-  allocate(nii(Nlat))
-  allocate(dii(Nlat))
-  allocate(pii(Nlat))
   !+-------------------------------------------------------------------+!
 
   !+- input variable: nr of k points for each layer -+!
   call parse_input_variable(Nx,"Nx","inputRDMFT.in",default=10)
   call parse_input_variable(Uperiod,"Uperiod","inputRDMFT.in",default=dble(Nlat))
   call parse_input_variable(Uamplitude,"Uamplitude","inputRDMFT.in",default=0.d0)
+  call parse_input_variable(wmixing,"WMIXING","inputRDMFT.in",default=1.d0)
+
+  call save_input_file("inputRDMFT.in")
 
   !+- build lattice hamiltonian -+!
-  !call get_tb_hamiltonian 
-  call get_slab_hamiltonian 
+  call get_lattice_hamiltonian(Nside)
   !+-----------------------------+!
 
   !+- allocate matsubara and real frequencies -+!
@@ -65,6 +65,11 @@ program ed_slab
   wm(:)  = pi/beta*real(2*arange(1,Lmats)-1,8)
   !+----------------------------------+!
 
+  Lk   = square_lattice_dimension(Nx,Nx)
+  allocate(epsik(Lk),wt(Lk))
+  wt   = square_lattice_structure(Lk,Nx,Nx)
+  epsik= square_lattice_dispersion_array(Lk,ts)
+  call get_free_dos(epsik,wt)
 
   !random energies tbr
   allocate(erandom(Nlat),Usite(Nlat))
@@ -78,7 +83,11 @@ program ed_slab
 
   !+- allocate a bath for each impurity -+!
   Nb=get_bath_size()
-  allocate(bath(Nb(1),Nb(2),Nlat))
+  allocate(bath(Nlat,Nb(1),Nb(2)))
+  allocate(bath_old(Nlat,Nb(1),Nb(2)))
+  allocate(nii(Nlat))
+  allocate(dii(Nlat))
+  allocate(pii(Nlat))
   allocate(Smats(2,Nlat,Lmats))
   allocate(Sreal(2,Nlat,Lreal))
   allocate(Gmats(2,Nlat,Lmats))
@@ -87,16 +96,25 @@ program ed_slab
   !+- initialize baths -+!
   call init_lattice_baths(bath)
 
-  
+
   !+- DMFT LOOP -+!
   iloop=0 ; converged=.false.
   do while(.not.converged.AND.iloop<nloop) 
      iloop=iloop+1
-     call start_loop(iloop,nloop,"DMFT-loop")
-     call ed_solve_sc_impurity_mats(bath,erandom,Usite,Nx,Delta,Gmats,Greal,Smats,Sreal)
-     converged = check_convergence(pii,dmft_error,Nsuccess,nloop,id=0,file="error.err")
+     if(mpiID==0) call start_loop(iloop,nloop,"DMFT-loop")
+     bath_old=bath
+     call ed_solve_sc_impurity(bath,erandom,epsik,wt,Delta,Gmats,Greal,Smats,Sreal,Usite)
+     bath=wmixing*bath + (1.d0-wmixing)*bath_old
+     if(rdmft_phsym)then
+        do i=1,Nlat
+           call ph_symmetrize_bath(bath(i,:,:))
+        enddo
+     endif
+     if(rdmft_lrsym)call lr_symmetrize_bath(bath)
+     if(mpiID==0) converged = check_convergence(pii,dmft_error,Nsuccess,nloop,id=0,file="error.err")
+     call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
      call print_sc_out(converged)
-     call end_loop()
+     if(mpiID==0) call end_loop()
   enddo
   !+-------------------------------------+!
 
@@ -128,40 +146,33 @@ contains
        nimp = sum(nii)/dble(Nlat)
        phi  = sum(pii)/dble(Nlat)
        docc = sum(dii)/dble(Nlat)
-       ccdw = 0.d0
-       do is=1,Nlat
-          ! row=irow(is)
-          ! col=icol(is)
-          ccdw = ccdw + (-1.d0)**(is)*(nii(is)-1.d0)
-       enddo
-       print*,"nimp  =",nimp
-       print*,"phi   =",phi
-       print*,"docc  =",docc
-       print*,"ccdw  =",ccdw
+       print*,"<nimp>  =",nimp
+       print*,"<phi>   =",phi
+       print*,"<docc>  =",docc
 
        call splot("nVSiloop.data",iloop,nimp,append=.true.)
        call splot("phiVSiloop.data",iloop,phi,append=.true.)
        call splot("doccVSiloop.data",iloop,docc,append=.true.)
        call splot("ccdwVSiloop.data",iloop,ccdw,append=.true.)
-       call store_data("nVSisite.data",nii)
-       call store_data("phiVSisite.data",pii)
-       call store_data("doccVSisite.data",dii)
-
-       call splot("Delta_iw.data",wm(1:Lmats),Delta(1,1:Nlat,1:Lmats))
-       call splot("Gamma_iw.data",wm(1:Lmats),Delta(2,1:Nlat,1:Lmats))
+       call store_data("nVSisite.data",nii,(/(dble(i),i=1,Nlat)/))
+       call store_data("phiVSisite.data",pii,(/(dble(i),i=1,Nlat)/))
+       call store_data("doccVSisite.data",dii,(/(dble(i),i=1,Nlat)/))
 
        !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
-          call splot("LG_iw.data",wm(1:Lmats),Gmats(1,1:Nlat,1:Lmats))
-          call splot("LF_iw.data",wm(1:Lmats),Gmats(2,1:Nlat,1:Lmats))
-          call splot("LG_realw.data",wr(1:Lreal),Greal(1,1:Nlat,1:Lreal))
-          call splot("LF_realw.data",wr(1:Lreal),Greal(2,1:Nlat,1:Lreal))
-
+          ! call store_data("LDelta_iw.data",Delta(1,1:Nlat,1:Lmats),wm(1:Lmats))
+          ! call store_data("LGamma_iw.data",Delta(2,1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LG_iw.data",Gmats(1,1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LF_iw.data",Gmats(2,1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LG_realw.data",Greal(1,1:Nlat,1:Lreal),wr(1:Lreal))
+          call store_data("LF_realw.data",Greal(2,1:Nlat,1:Lreal),wr(1:Lreal))
+          call store_data("LSigma_iw.data",Smats(1,1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LSelf_iw.data",Smats(2,1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LSigma_realw.data",Sreal(1,1:Nlat,1:Lreal),wr(1:Lreal))
+          call store_data("LSelf_realw.data",Sreal(2,1:Nlat,1:Lreal),wr(1:Lreal))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Nlat
-             ! row=irow(is)
-             ! col=icol(is)
              cdwii(is) = (-1.d0)**(is)*(nii(is)-1.d0)
              sii(is)   = dimag(Smats(1,is,1))-&
                   wm(1)*(dimag(Smats(1,is,2))-dimag(Smats(1,is,1)))/(wm(2)-wm(1))
@@ -172,74 +183,12 @@ contains
           rii=abs(rii)
           sii=abs(sii)
           zii=abs(zii)
-          
-          call store_data("cdwVSisite.data",cdwii)
-          call store_data("rhoVSisite.data",rii)
-          call store_data("sigmaVSisite.data",sii)
-          call store_data("zetaVSisite.data",zii)
-          call store_data("erandomVSisite.data",erandom)
-          
-          !Plot averaged local functions
-          aGmats    = sum(Gmats,dim=2)/real(Nlat,8)
-          aSmats = sum(Smats,dim=2)/real(Nlat,8)
 
-          aGreal    = sum(Greal,dim=2)/real(Nlat,8)
-          aSreal = sum(Sreal,dim=2)/real(Nlat,8)
-
-
-          call splot("aSigma_iw.data",wm,aSmats(1,:))
-          call splot("aSelf_iw.data",wm,aSmats(2,:))
-          call splot("aSigma_realw.data",wr,aSreal(1,:))
-          call splot("aSelf_realw.data",wr,aSreal(2,:))
-
-          call splot("aG_iw.data",wm,aGmats(1,:))
-          call splot("aF_iw.data",wm,aGmats(2,:))
-          call splot("aG_realw.data",wr,aGreal(1,:))
-          call splot("aF_realw.data",wr,aGreal(2,:))
-
-
-          call get_moments(nii,mean,sdev,var,skew,kurt)
-          data_mean(1)=mean
-          data_sdev(1)=sdev
-          call splot("statistics.n.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(dii,mean,sdev,var,skew,kurt)
-          data_mean(2)=mean
-          data_sdev(2)=sdev
-          call splot("statistics.docc.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(pii,mean,sdev,var,skew,kurt)
-          data_mean(2)=mean
-          data_sdev(2)=sdev
-          call splot("statistics.phi.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(cdwii,mean,sdev,var,skew,kurt)
-          call splot("statistics.cdwn.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(zii,mean,sdev,var,skew,kurt)
-          call splot("statistics.zeta.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(sii,mean,sdev,var,skew,kurt)
-          call splot("statistics.sigma.data",mean,sdev,var,skew,kurt)
-          !
-          call get_moments(rii,mean,sdev,var,skew,kurt)
-          call splot("statistics.rho.data",mean,sdev,var,skew,kurt)
-
-          data_covariance(1,:)=nii
-          data_covariance(2,:)=pii
-          covariance_nd = get_covariance(data_covariance,data_mean)
-          open(10,file="covariance_n.phi.data")
-          do i=1,2
-             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
-          enddo
-          close(10)
-
-          forall(i=1:2,j=1:2)covariance_nd(i,j) = covariance_nd(i,j)/(data_sdev(i)*data_sdev(j))
-          open(10,file="correlation_n.phi.data")
-          do i=1,2
-             write(10,"(2f24.12)")(covariance_nd(i,j),j=1,2)
-          enddo
-          close(10)
+          call store_data("cdwVSisite.data",cdwii,(/(dble(i),i=1,Nlat)/))
+          call store_data("rhoVSisite.data",rii,(/(dble(i),i=1,Nlat)/))
+          call store_data("sigmaVSisite.data",sii,(/(dble(i),i=1,Nlat)/))
+          call store_data("zetaVSisite.data",zii,(/(dble(i),i=1,Nlat)/))
+          call store_data("erandomVSisite.data",erandom,(/(dble(i),i=1,Nlat)/))
        end if
 
     end if

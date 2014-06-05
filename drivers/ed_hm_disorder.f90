@@ -1,13 +1,12 @@
 !########################################################
-!PURPOSE  :solve the attractive (A) disordered (D) Hubbard
-! model (HM) using Modified Perturbation THeory (MPT), w/ DMFT
+!PURPOSE  :solve the disordered (D) Hubbard
+! model (HM) using  DMFT-ED
 ! disorder realization depends on the parameter int idum:
 ! so that different realizations (statistics) are performed 
 ! calling this program many times providing a *different* seed 
-! +IDUM. The result of each calculation is stored different dir
-! indexed by the seed itself.
+! +IDUM. 
 !########################################################
-program ed_ahm_disorder
+program ed_hm_disorder
   USE RDMFT
   USE ERROR
   USE TOOLS
@@ -27,7 +26,6 @@ program ed_ahm_disorder
   integer                                 :: Nb(2)
   real(8),dimension(:),allocatable        :: Verror
 
-  real(8) :: aveN,aveNp
   !+-------------------------------------------------------------------+!
   ! START MPI !
   call MPI_INIT(mpiERR)
@@ -44,14 +42,13 @@ program ed_ahm_disorder
   call rdmft_read_input("inputRDMFT.in")
   store_size=1024
   Nlat = Nside**2
-  allocate(nii(Nlat))
-  allocate(dii(Nlat))
   !+-------------------------------------------------------------------+!
 
 
   !+- build lattice hamiltonian -+!
-  call get_tb_hamiltonian
+  call get_lattice_hamiltonian(Nside,Nside)
   !+-----------------------------+!
+
 
   !+- allocate matsubara and real frequencies -+!
   allocate(wm(Lmats),wr(Lreal))
@@ -66,12 +63,14 @@ program ed_ahm_disorder
   call random_seed(put=[idum])
   call random_number(erandom)
   erandom=(2.d0*erandom-1.d0)*Wdis/2.d0
-  erandom(Nlat) = -sum(erandom(1:Nlat-1))
-  call store_data("erandomVSisite.data",erandom)
+  !erandom(Nlat) = -sum(erandom(1:Nlat-1))
+  call store_data("erandomVSisite.data",erandom,(/(dble(i),i=1,Nlat)/))
   call splot("erandom.data",erandom,(/(1,i=1,size(erandom))/))
 
   !+- allocate a bath for each impurity -+!
   Nb=get_bath_size()
+  allocate(nii(Nlat))
+  allocate(dii(Nlat))
   allocate(bath(Nlat,Nb(1),Nb(2)))
   allocate(bath_old(Nlat,Nb(1),Nb(2)))
   allocate(Smats(Nlat,Lmats))
@@ -90,11 +89,16 @@ program ed_ahm_disorder
      iloop=iloop+1
      if(mpiID==0)call start_loop(iloop,nloop,"DMFT-loop",unit=LOGfile)
      call ed_solve_impurity(bath,erandom,Delta,Gmats,Greal,Smats,Sreal)
-     bath=wmixing*bath + (1.d0-wmixing)*bath_old
+     if(rdmft_phsym)then
+        do i=1,Nlat
+           call ph_symmetrize_bath(bath_(i,:,:))
+        enddo
+     endif
+     bath=wmixing*bath + (1.d0-wmixing)*bath_old ; bath_old = bath
      if(mpiID==0)converged = check_convergence(Delta(:,:),dmft_error,Nsuccess,nloop,index=2,total=2,id=0,file="DELTAerror.err",reset=.false.)
      if(mpiID==0)converged = check_convergence_local(dii,dmft_error,Nsuccess,nloop,index=1,total=2,id=0,file="error.err")
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)
-     call print_sc_out(converged)
+     call print_out(converged)
      if(mpiID==0)call end_loop()
   enddo
   !+-------------------------------------+!
@@ -106,7 +110,7 @@ program ed_ahm_disorder
 contains
 
 
-  subroutine print_sc_out(converged)
+  subroutine print_out(converged)
     integer                        :: i,j,is,row,col
     real(8)                        :: nimp,phi,ccdw,docc
     real(8),dimension(Nlat)        :: cdwii,rii,sii,zii
@@ -117,15 +121,15 @@ contains
     real(8),dimension(2,2)         :: covariance_nd
     real(8),dimension(2)           :: data_mean,data_sdev
     logical                        :: converged
-    complex(8),dimension(Lmats)  :: aGmats,aSmats
-    complex(8),dimension(Lreal)  :: aGreal,aSreal
-    character(len=50)              :: suffix
+    complex(8),dimension(Lmats)    :: aGmats,aSmats
+    complex(8),dimension(Lreal)    :: aGreal,aSreal
+    character(len=50)              :: suffix,cloop,cfoo
 
 
     if(mpiID==0)then
        suffix=".data"
-       ! write(suffix,'(I4.4)') iloop
-       ! suffix = "_loop"//trim(suffix)//".data"
+       write(cfoo,'(I4.4)')iloop
+       cloop = "_loop"//trim(cfoo)//".data"
 
        !Get CDW "order parameter"
        do is=1,Nlat
@@ -137,27 +141,34 @@ contains
        nimp = sum(nii)/dble(Nlat)
        docc = sum(dii)/dble(Nlat)
        ccdw = sum(cdwii)/dble(Nlat)
-       print*,"nimp  =",nimp
-       print*,"docc  =",docc
-       print*,"ccdw  =",ccdw
+       print*,"<nimp>  =",nimp
+       print*,"<docc>  =",docc
+       print*,"<ccdw>  =",ccdw
+
 
        call splot("nVSiloop.data",iloop,nimp,append=.true.)
        call splot("doccVSiloop.data",iloop,docc,append=.true.)
        call splot("ccdwVSiloop.data",iloop,ccdw,append=.true.)
-       call store_data("nVSisite"//trim(suffix),nii)
-       call store_data("doccVSisite"//trim(suffix),dii)
-       call store_data("cdwVSisite"//trim(suffix),cdwii)
+       call store_data("nVSisite"//trim(suffix),nii,(/(dble(i),i=1,Nlat)/))
+       call store_data("doccVSisite"//trim(suffix),dii,(/(dble(i),i=1,Nlat)/))
+       call store_data("cdwVSisite"//trim(suffix),cdwii,(/(dble(i),i=1,Nlat)/))
 
-       !<DEBUG: to be moved under converged section below
-       call splot("LDelta_iw"//trim(suffix),wm(1:Lmats),Delta(1:Nlat,1:Lmats))
-       call splot("LG_iw"//trim(suffix),wm(1:Lmats),Gmats(1:Nlat,1:Lmats))
-       call splot("LG_realw"//trim(suffix),wr(1:Lreal),Greal(1:Nlat,1:Lreal))
-       call splot("LSigma_iw"//trim(suffix),wm(1:Lmats),Smats(1:Nlat,1:Lmats))
-       call splot("LSigma_realw"//trim(suffix),wr(1:Lreal),Sreal(1:Nlat,1:Lreal))
+
+       !<DEBUG: to be removed or moved under converged section below
+       ! call store_data("nVSisite"//trim(cloop),nii)
+       ! call store_data("phiVSisite"//trim(cloop),pii)
+       ! call store_data("LG_iw"//trim(suffix),wm(1:Lmats),Gmats(1,1:Nlat,1:Lmats))
+       ! call store_data("LG_realw"//trim(suffix),wr(1:Lreal),Greal(1,1:Nlat,1:Lreal))
        !>DEBUG
+
 
        !WHEN CONVERGED IS ACHIEVED PLOT ADDITIONAL INFORMATION:
        if(converged)then
+          call store_data("LG_iw"//trim(suffix),Gmats(1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LG_realw"//trim(suffix),Greal(1:Nlat,1:Lreal),wr(1:Lreal))
+          call store_data("LSigma_iw"//trim(suffix),Smats(1:Nlat,1:Lmats),wm(1:Lmats))
+          call store_data("LSigma_realw"//trim(suffix),Sreal(1:Nlat,1:Lreal),wr(1:Lreal))
+          ! call store_data("LDelta_iw"//trim(suffix),wm(1:Lmats),Delta(1,1:Nlat,1:Lmats))
 
           !Plot observables: n,delta,n_cdw,rho,sigma,zeta
           do is=1,Nlat
@@ -182,9 +193,9 @@ contains
              enddo
           enddo
 
-          call store_data("rhoVSisite"//trim(suffix),rii)
-          call store_data("sigmaVSisite"//trim(suffix),sii)
-          call store_data("zetaVSisite"//trim(suffix),zii)
+          call store_data("rhoVSisite"//trim(suffix),rii,(/(dble(i),i=1,Nlat)/))
+          call store_data("sigmaVSisite"//trim(suffix),sii,(/(dble(i),i=1,Nlat)/))
+          call store_data("zetaVSisite"//trim(suffix),zii,(/(dble(i),i=1,Nlat)/))
           call splot3d("3d_nVSij"//trim(suffix),grid_x,grid_y,nij)
           call splot3d("3d_doccVSij"//trim(suffix),grid_x,grid_y,dij)
 
@@ -243,7 +254,7 @@ contains
        end if
 
     end if
-  end subroutine print_sc_out
+  end subroutine print_out
 
 
 
@@ -284,4 +295,4 @@ contains
   end subroutine search_mu
 
 
-end program ed_ahm_disorder
+end program ed_hm_disorder

@@ -23,6 +23,8 @@ module RDMFT_INPUT_VARS
   real(8)           :: rdmft_nread      !density value for chemical potential search.
   real(8)           :: rdmft_nerror     ! max error in adjusting chemical potential. 
   real(8)           :: rdmft_ndelta     !starting value for chemical potential shift.
+  logical           :: rdmft_phsym      !flag to enforce particle-hole symmetry in the bath 
+  logical           :: rdmft_lrsym      !flag to enforce left-right symmetry in a biased system
   integer           :: mix_type         !flag for mixing type: 0=mix G0, 1=mix Sigma
   character(len=64) :: fileSig,fileSelf !restart files
 
@@ -63,6 +65,7 @@ module RDMFT_INPUT_VARS
   integer              :: cg_Weight           !CGfit mode 0=normal,1=1/n weight, 2=1/w weight
   character(len=5)     :: cg_Scheme           !fit scheme: delta (default), weiss for G0^
   integer              :: cg_stop             !fit stop condition:0-3, 0=default
+  integer              :: cg_method           !fit routine type:0=CGnr (default), 1=minimize (old f77), 2=CG+
   real(8)              :: cg_eps              !fit eps tolerance
   logical              :: finiteT             !flag for finite temperature calculation
   character(len=4)     :: ed_method           !flag to set ed method solution: lanc=lanczos method, full=full diagonalization
@@ -109,6 +112,8 @@ contains
     call parse_input_variable(rdmft_nread,"RDMFT_NREAD",INPUTunit,default=0.d0)
     call parse_input_variable(rdmft_nerror,"RDMFT_NERROR",INPUTunit,default=1.d-4)
     call parse_input_variable(rdmft_ndelta,"RDMFT_NDELTA",INPUTunit,default=0.1d0)
+    call parse_input_variable(rdmft_phsym,"RDMFT_PHSYM",INPUTunit,default=.false.)
+    call parse_input_variable(rdmft_lrsym,"RDMFT_LRSYM",INPUTunit,default=.false.)
     call parse_input_variable(n_wanted,"NWANTED",INPUTunit,default=Nside**2/2)
     call parse_input_variable(n_tol,"NTOL",INPUTunit,default=0.1d0)
     call parse_input_variable(chitrap,"CHITRAP",INPUTunit,default=0.1d0)
@@ -128,9 +133,9 @@ contains
     call parse_input_variable(uloc,"ULOC",INPUTunit,default=[2.d0,0.d0,0.d0])
     call parse_input_variable(ust,"UST",INPUTunit,default=0.d0)
     call parse_input_variable(Jh,"JH",INPUTunit,default=0.d0)
-    call parse_input_variable(beta,"BETA",INPUTunit,default=500.d0)
+    call parse_input_variable(beta,"BETA",INPUTunit,default=100.d0)
     call parse_input_variable(xmu,"XMU",INPUTunit,default=0.d0)
-    call parse_input_variable(deltasc,"DELTASC",INPUTunit,default=2.d-2)
+    call parse_input_variable(deltasc,"DELTASC",INPUTunit,default=1.d-2)
     call parse_input_variable(nloop,"NLOOP",INPUTunit,default=100)
     call parse_input_variable(dmft_error,"DMFT_ERROR",INPUTunit,default=1.d-4)
     call parse_input_variable(sb_field,"SB_FIELD",INPUTunit,default=0.1d0)
@@ -157,12 +162,13 @@ contains
     call parse_input_variable(lanc_nstates_total,"LANC_NSTATES_TOTAL",INPUTunit,default=1)
     call parse_input_variable(lanc_niter,"LANC_NITER",INPUTunit,default=512)
     call parse_input_variable(lanc_ngfiter,"LANC_NGFITER",INPUTunit,default=100)
-    call parse_input_variable(cg_niter,"CG_NITER",INPUTunit,default=200)
-    call parse_input_variable(cg_scheme,"CG_SCHEME",INPUTunit,default='delta')
-    call parse_input_variable(cg_ftol,"CG_FTOL",INPUTunit,default=1.d-3)
+    call parse_input_variable(cg_niter,"CG_NITER",INPUTunit,default=500)
+    call parse_input_variable(cg_scheme,"CG_SCHEME",INPUTunit,default='weiss')
+    call parse_input_variable(cg_ftol,"CG_FTOL",INPUTunit,default=1.d-5)
+    call parse_input_variable(cg_method,"CG_METHOD",INPUTunit,default=0,comment="Conjugate-Gradient method: 0=NR, 1=minimize, 2=CG+.")
     call parse_input_variable(cg_weight,"CG_WEIGHT",INPUTunit,default=0)
     call parse_input_variable(cg_stop,"CG_STOP",INPUTunit,default=0,comment="Conjugate-Gradient stopping condition.")
-    call parse_input_variable(cg_eps,"CG_EPS",INPUTunit,default=0.0001d0,comment="Conjugate-Gradient eps tolerance.")
+    call parse_input_variable(cg_eps,"CG_EPS",INPUTunit,default=0.000001d0,comment="Conjugate-Gradient eps tolerance.")
     call parse_input_variable(ed_Type,"ED_TYPE",INPUTunit,default='d')
     call parse_input_variable(ed_Supercond,"ED_SUPERCOND",INPUTunit,default=.false.)
     call parse_input_variable(ed_Method,"ED_METHOD",INPUTunit,default='lanc')

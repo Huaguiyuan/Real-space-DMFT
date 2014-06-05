@@ -40,11 +40,10 @@ module RDMFT_AUX_FUNX
   end interface get_sc_gloc_real
 
 
-  public :: get_tb_hamiltonian  !now only 2D square
-  public :: get_slab_hamiltonian !to be overloaded with get_tb_hamiltonian !!!
+  public :: get_lattice_hamiltonian      !+- produce the 2D square/ slab-chain Hamiltonian -+! 
+
   public :: setup_initial_sigma, setup_sc_initial_sigma
   public :: get_indip_list
-
 
   public :: symmetrize
   public :: reshuffled
@@ -89,7 +88,7 @@ contains
        do is=1,Nlat
           gf_tmp(is,i) = Gloc(is,is)
        enddo
-       if(mpiID==0)call eta(i,Lmats,file="Glocal_mats.eta")
+       if(mpiID==0)call eta(i,Lmats,unit=LOGfile)
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -115,7 +114,7 @@ contains
        do is=1,Nlat
           gf_tmp(is,i) = Gloc(is,is)
        enddo
-       if(mpiID==0)call eta(i,Lreal,file="Glocal_real.eta")
+       if(mpiID==0)call eta(i,Lreal,unit=LOGfile)
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -151,7 +150,7 @@ contains
           !##ACTHUNG!!
           gf_tmp(2,is,i) = dreal(Gloc(is,Nlat+is))
        end forall
-       if(mpiID==0)call eta(i,Lmats,file="Glocal_mats.eta")
+       if(mpiID==0)call eta(i,Lmats,unit=LOGfile)!,file="Glocal_mats.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -192,7 +191,7 @@ contains
           gf_tmp(1,is,i) = Gloc(is,is)
           gf_tmp(2,is,i) = Gloc(is,Nlat+is)
        end forall
-       if(mpiID==0)call eta(i,Lreal,file="Glocal_real.eta")
+       if(mpiID==0)call eta(i,Lreal,unit=LOGfile)!,file="Glocal_real.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(gf_tmp,fg,2*Nlat*Lreal,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -341,70 +340,93 @@ contains
 
 
 
-
-
-
-
-
-
   !+----------------------------------------------------------------+
-  !PURPOSE  : Build tight-binding Hamiltonian
+  !PURPOSE  : Get the lattice Hamiltonian, using Nrow,Ncol
+  ! if Nrow only is given it produces a slab/chain Hamiltonian.
+  ! if Nrow=Ncol --> 2D square lattice
+  ! if Nrow!=Ncol --> 2D rect lattice
   !+----------------------------------------------------------------+
-  subroutine get_tb_hamiltonian(centered)
-    integer          :: i,jj,j,k,row,col,link(4)
+  subroutine get_lattice_hamiltonian(Nrow,Ncol,centered)
+    integer          :: Nrow
+    integer,optional :: Ncol
+    integer          :: Nsquare
     logical,optional :: centered
     logical          :: symm
+    integer          :: i,jj,j,k,row,col,link(4)
     symm=.false.;if(present(centered))symm=centered
     allocate(H0(Nlat,Nlat))
-    allocate(icol(Nlat),irow(Nlat))
-    allocate(ij2site(Nside,Nside))
-    H0=0.d0
-    do row=0,Nside-1
-       do col=0,Nside-1
-          i=col+row*Nside+1
-          if(.not.symm)then
-             irow(i)=row+1
-             icol(i)=col+1
-             ij2site(row+1,col+1)=i
-          else
-             irow(i)=-Nside/2+row                     ! cambio la tabella i -> isite,jsite
-             icol(i)=-Nside/2+col                     ! per farla simmetrica.. aiutera' 
-             ij2site(row-Nside/2,col-Nside/2)=i       ! a implementare le simmetrie
-          endif
-          !
-          if(pbcflag)then ! PBC are implemented using the state labels and so they are mpt affected by symm
-             !HOPPING w/ PERIODIC BOUNDARY CONDITIONS
-             link(1)= row*Nside+1              + mod(col+1,Nside)  ;
-             link(3)= row*Nside+1              + (col-1)           ; if((col-1)<0)link(3)=(Nside+(col-1))+row*Nside+1
-             link(2)= mod(row+1,Nside)*Nside+1 + col               ; 
-             link(4)= (row-1)*Nside+1          + col               ; if((row-1)<0)link(4)=col+(Nside+(row-1))*Nside+1
-          else   
-             !without PBC
-             link(1)= row*Nside+1              + col+1   ; if((col+1)==Nside)link(1)=0
-             link(3)= row*Nside+1              +(col-1)  ; if((col-1)<0)     link(3)=0
-             link(2)= (row+1)*Nside+1 + col              ; if((row+1)==Nside)link(2)=0
-             link(4)= (row-1)*Nside+1          + col     ; if((row-1)<0)     link(4)=0
-          endif
-          do jj=1,4
-             if(link(jj)>0)H0(i,link(jj))=-ts !! ts must be negative.
-          enddo
-       enddo
-    enddo
-  end subroutine get_tb_hamiltonian
-
-
-  !+- bulid linear chain hamiltonian -+!
-  subroutine get_slab_hamiltonian
-    integer          :: i
-    allocate(H0(Nlat,Nlat))
     H0 = 0.d0
-    do i=1,Nlat-1
-       H0(i,i+1)=-ts
-       H0(i+1,i)=-ts
-    end do
-  end subroutine get_slab_hamiltonian
+    if(present(Ncol)) then 
+       !+- 2d lattice -+!
+       if(Nlat /= Nrow*Ncol) stop "Nlat != Nrow*Ncol"
+       allocate(icol(Nlat),irow(Nlat))
+       allocate(ij2site(Nrow,Ncol))
+       if(Ncol /= Nrow) then
+          !+- STRIPE -+!
+          do row=0,Nrow-1
+             do col=0,Ncol-1
+                i=col+ 1 + row*Ncol
+                !
+                irow(i)=row+1
+                icol(i)=col+1
+                ij2site(row+1,col+1)=i
+                !
+                link(1)= i + 1    ; if((col+1)==Ncol) link(1)=0  !right hop
+                link(3)= i - 1    ; if((col-1)<0)     link(3)=0  !left  hop
+                link(2)= i + Ncol ; if((row+1)==Nrow) link(2)=0  !up    hop
+                link(4)= i - Ncol ; if((row-1)<0)     link(4)=0  !down  hop
+                !
+                do jj=1,4
+                   if(link(jj)>0)H0(i,link(jj))=-ts !! ts must be negative.
+                enddo
+             enddo
+          enddo
+          !
+       else
+          !+- SQUARE -+!
+          Nsquare=Nrow
+          do row=0,Nsquare-1
+             do col=0,Nsquare-1
+                i=col+row*Nsquare+1
+                if(.not.symm)then
+                   irow(i)=row+1
+                   icol(i)=col+1
+                   ij2site(row+1,col+1)=i
+                else
+                   irow(i)=-Nsquare/2+row                     ! cambio la tabella i -> isite,jsite
+                   icol(i)=-Nsquare/2+col                     ! per farla simmetrica.. aiutera' 
+                   ij2site(row-Nsquare/2,col-Nsquare/2)=i       ! a implementare le simmetrie
+                endif
+                !
+                if(pbcflag)then ! PBC are implemented using the state labels and so they are mpt affected by symm
+                   !HOPPING w/ PERIODIC BOUNDARY CONDITIONS
+                   link(1)= row*Nsquare+1              + mod(col+1,Nsquare)  ;
+                   link(3)= row*Nsquare+1              + (col-1)             ; if((col-1)<0)link(3)=(Nsquare+(col-1))+row*Nsquare+1
+                   link(2)= mod(row+1,Nsquare)*Nsquare+1 + col               ; 
+                   link(4)= (row-1)*Nsquare+1          + col                 ; if((row-1)<0)link(4)=col+(Nsquare+(row-1))*Nsquare+1
+                else   
+                   !without PBC
+                   link(1)= row*Nsquare+1              + col+1   ; if((col+1)==Nsquare)link(1)=0
+                   link(3)= row*Nsquare+1              +(col-1)  ; if((col-1)<0)     link(3)=0
+                   link(2)= (row+1)*Nsquare+1 + col              ; if((row+1)==Nsquare)link(2)=0
+                   link(4)= (row-1)*Nsquare+1          + col     ; if((row-1)<0)     link(4)=0
+                endif
+                do jj=1,4
+                   if(link(jj)>0)H0(i,link(jj))=-ts !! ts must be negative.
+                enddo
+             enddo
+          enddo
+       end if
+    else
+       !+- 1d lattice -+!
+       if(Nlat /= Nrow) stop "Nlat != Nrow"
+       do i=1,Nrow-1
+          H0(i,i+1)=-ts
+          H0(i+1,i)=-ts
+       end do
+    end if
 
-
+  end subroutine get_lattice_hamiltonian
 
 
 
@@ -539,6 +561,8 @@ contains
        enddo
     enddo
   end subroutine c_symmetrize
+
+
 
 
 

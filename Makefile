@@ -6,12 +6,11 @@ include sfmake.inc
 DIREXE=$(HOME)/.bin
 DIR=drivers
 
-#EXE=ahm_real_trap
-#EXE=ahm_real_disorder
-#EXE=ed_ahm_squareRDMFT
-#EXE=ed_ahm_slabRDMFT
 EXE=ed_ahm_disorder
+#EXE=ed_ahm_slab
+#EXE=ed_ahm_stripe
 #EXE=ed_hm_disorder
+#EXE=ed_hm_slab
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 

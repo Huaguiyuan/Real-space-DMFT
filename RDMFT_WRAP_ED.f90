@@ -25,10 +25,9 @@ module RDMFT_WRAP_ED
   public :: ed_solve_impurity
   public :: ed_solve_sc_impurity
   public :: init_lattice_baths
-
+  public :: lr_symmetrize_bath
 
 contains
-
 
 
   !+------------------------------------------------------------+!
@@ -76,7 +75,6 @@ contains
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
-       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -90,13 +88,14 @@ contains
     call get_gloc_real(eloc,Sreal,Greal)
     !+- GET SITE DEPENDENT HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
+       Hloc(1,1,1,1)=eloc(ilat)
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        do i=1,Lmats
           if(cg_scheme=='weiss')then
              Delta_tmp(ilat,1,1,i)  =   one/(one/Gmats(ilat,i) + Smats(ilat,i))
           else
-             Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Smats(ilat,i) - one/Gmats(ilat,i)
+             Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Hloc(1,1,1,1) - Smats(ilat,i) - one/Gmats(ilat,i)
           endif
        end do
        call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(ilat,:,:),ispin=1)
@@ -153,7 +152,6 @@ contains
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
        pii_tmp(ilat)   = ed_phisc(1)
-       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -168,6 +166,7 @@ contains
     call get_sc_gloc_real(eloc,Sreal,Greal)
     !+- GET SITE DEPENDENT HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
+       Hloc(1,1,1,1)=eloc(ilat)
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        do i=1,Lmats
@@ -180,7 +179,7 @@ contains
              Delta_tmp(2,ilat,1,1,i)  =  calG(2,i)/cdet
           else
              cdet       = abs(Gmats(1,ilat,i))**2 + (Gmats(2,ilat,i))**2
-             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Smats(1,ilat,i) - conjg(Gmats(1,ilat,i))/cdet 
+             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Hloc(1,1,1,1) - Smats(1,ilat,i) - conjg(Gmats(1,ilat,i))/cdet 
              Delta_tmp(2,ilat,1,1,i) = -(Gmats(2,ilat,i)/cdet + Smats(2,ilat,i))
           endif
        end do
@@ -247,7 +246,6 @@ contains
        Sreal_tmp(ilat,:) = impSreal(1,1,1,1,:)
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
-       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -257,22 +255,24 @@ contains
     !+- GET GLOC -+!
     Gmats=zero
     Greal=zero
-    call start_timer
     if(mpiID==0)write(LOGfile,*)"Get local GF:"
+    if(mpiID==0)call start_timer
     do ik=1,Lk
        call get_gloc_mats(eloc,Smats,Gmats,epsik(ik),wt(ik))
        call get_gloc_real(eloc,Sreal,Greal,epsik(ik),wt(ik))
-       call eta(ik,Lk)
+       if(mpiID==0)call eta(ik,Lk,unit=LOGfile)!,file="Glocal.eta")
     end do
+    if(mpiID==0)call stop_timer
     !+- GET HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
+       Hloc(1,1,1,1)=eloc(ilat)
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        do i=1,Lmats
           if(cg_scheme=='weiss')then
              Delta_tmp(ilat,1,1,i)  =   one/(one/Gmats(ilat,i) + Smats(ilat,i))
           else
-             Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Smats(ilat,i) - one/Gmats(ilat,i)
+             Delta_tmp(ilat,1,1,i) = xi*wm(i) + xmu - Hloc(1,1,1,1) - Smats(ilat,i) - one/Gmats(ilat,i)
           endif
        end do
        call chi2_fitgf(Delta_tmp(ilat,:,:,:),bath_(ilat,:,:),ispin=1)
@@ -336,7 +336,6 @@ contains
        nii_tmp(ilat)   = ed_dens(1)
        dii_tmp(ilat)   = ed_docc(1)
        pii_tmp(ilat)   = ed_phisc(1)
-       if(mpiID==0)call eta(ilat,Nlat,file="Impurity.eta")
     enddo
     if(mpiID==0)call stop_timer
     call MPI_ALLREDUCE(Smats_tmp,Smats,2*Nlat*Lmats,MPI_DOUBLE_COMPLEX,MPI_SUM,MPI_COMM_WORLD,MPIerr)
@@ -347,15 +346,17 @@ contains
     !+- GET GLOC -+!
     Gmats=zero
     Greal=zero
-    call start_timer
-    if(mpiID==0)write(LOGfile,*)"Get local GF:"
+    if(mpiID==0)call start_timer
+    if(mpiID==0)write(LOGfile,*)"Get local GF (id=0):"
     do ik=1,Lk
        call get_sc_gloc_mats(eloc,Smats,Gmats,epsik(ik),wt(ik))
        call get_sc_gloc_real(eloc,Sreal,Greal,epsik(ik),wt(ik))
-       call eta(ik,Lk)
+       if(mpiID==0)call eta(ik,Lk,unit=LOGfile)!,file="Glocal_mats.eta")
     end do
+    if(mpiID==0)call stop_timer
     !+- GET HYBRIDIZATION FUNCTION AND FIT BATHS -+!
     do ilat=1+mpiID,Nlat,mpiSIZE
+       Hloc(1,1,1,1)=eloc(ilat)
        write(tmp_suffix,'(I4.4)') ilat
        ed_file_suffix="_site"//trim(tmp_suffix)
        do i=1,Lmats
@@ -368,7 +369,7 @@ contains
              Delta_tmp(2,ilat,1,1,i)  =  calG(2,i)/cdet
           else
              cdet       = abs(Gmats(1,ilat,i))**2 + (Gmats(2,ilat,i))**2
-             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Smats(1,ilat,i) - &
+             Delta_tmp(1,ilat,1,1,i) = xi*wm(i) + xmu - Hloc(1,1,1,1) - Smats(1,ilat,i) - &
                   conjg(Gmats(1,ilat,i))/cdet 
              Delta_tmp(2,ilat,1,1,i) = -(Gmats(2,ilat,i)/cdet + Smats(2,ilat,i))
           endif
@@ -405,6 +406,34 @@ contains
     call MPI_Barrier(MPI_COMM_WORLD,mpiERR)
   end subroutine init_lattice_baths
 
+
+
+
+  !+-------------------------------------------------------------------+
+  !PURPOSE  : given a bath array enforces the left-right symmetry 
+  ! in finite and biased system by setting changing sign to the energies.
+  !+-------------------------------------------------------------------+
+  subroutine lr_symmetrize_bath(bath_)
+    real(8),dimension(:,:,:)                      :: bath_
+    type(effective_bath),dimension(size(bath_,1)) :: dmft_bath_
+    integer                                       :: i,ilat
+    if(size(bath_,1).ne.Nlat) stop "init_lattice_bath: wrong bath size dimension 3 (Nlat)"
+    do ilat=1,Nlat
+       call allocate_bath(dmft_bath_(ilat))
+       call set_bath(bath_(ilat,:,:),dmft_bath_(ilat))
+    enddo
+    do ilat=1,Nlat
+       do i=1,Nbath
+          dmft_bath_(Nlat+1-ilat)%e(:,:,i)=-dmft_bath_(ilat)%e(:,:,i)
+          dmft_bath_(Nlat+1-ilat)%v(:,:,i)= dmft_bath_(ilat)%v(:,:,i)
+          if(ed_supercond)dmft_bath_(Nlat+1-ilat)%d(:,:,i)= dmft_bath_(ilat)%d(:,:,i)
+       enddo
+    enddo
+    do ilat=1,Nlat
+       call copy_bath(dmft_bath_(ilat),bath_(ilat,:,:))
+       call deallocate_bath(dmft_bath_(ilat))
+    enddo
+  end subroutine lr_symmetrize_bath
 
 
 end module RDMFT_WRAP_ED
