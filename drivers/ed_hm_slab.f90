@@ -22,15 +22,15 @@ program ed_slab
   complex(8),allocatable,dimension(:,:) :: Smats,Sreal !self_energies
   complex(8),allocatable,dimension(:,:) :: Gmats,Greal !local green's functions
   complex(8),allocatable,dimension(:,:) :: Delta      
-  real(8),allocatable,dimension(:)        :: erandom,Usite,elocal
-  real(8),allocatable,dimension(:,:,:)    :: bath,bath_old
-  logical                                 :: converged
-  real(8)                                 :: Uperiod,Uamplitude,DeltaV
-  real(8)                                 :: r,de
-  real(8)                                 :: wmixing
-  real(8),allocatable,dimension(:)        :: epsik,wt
-  integer                                 :: i,is,iloop
-  integer                                 :: Nb(2),Nx,Lk,ik
+  real(8),allocatable,dimension(:)      :: Usite,elocal
+  real(8),allocatable,dimension(:,:,:)  :: bath,bath_old
+  logical                               :: converged
+  real(8)                               :: Uperiod,Uamplitude,DeltaV
+  real(8)                               :: r,de
+  real(8)                               :: wmixing
+  real(8),allocatable,dimension(:)      :: epsik,wt
+  integer                               :: i,is,iloop
+  integer                               :: Nb(2),Nx,Lk,ik
 
 
   !+-------------------------------------------------------------------+!
@@ -55,8 +55,7 @@ program ed_slab
   !if(rdmft_phsym.AND.rdmft_lrsym)stop "error! make up your mind: phsym=T and lrsym=T is not possible."
   store_size=1024
   Nlat = Nside
-  allocate(nii(Nlat))
-  allocate(dii(Nlat))
+
   !+-------------------------------------------------------------------+!
 
 
@@ -85,23 +84,20 @@ program ed_slab
   ! end do
 
 
-  !random energies tbr
-  allocate(erandom(Nlat),Usite(Nlat),elocal(Nlat))
-  erandom=0.d0
-  elocal = 0.d0
+  allocate(Usite(Nlat),elocal(Nlat))
   Usite=Uloc(1)
   do i=1,Nlat
      Usite(i) = Usite(i) + Uamplitude*dsin(pi*dble(i-1)/dble(Nlat-1)*Uperiod)
      elocal(i)= DeltaV*0.5d0 - DeltaV/dble(Nlat-1)*dble(i-1) 
      write(77,*) i,Usite(i),elocal(i)
   end do
-  elocal = elocal + erandom
-  Usite=0.d0
 
   !+- allocate a bath for each impurity -+!
   Nb=get_bath_size()
   allocate(bath(Nlat,Nb(1),Nb(2)))
   allocate(bath_old(Nlat,Nb(1),Nb(2)))
+  allocate(nii(Nlat))
+  allocate(dii(Nlat))
   allocate(Smats(Nlat,Lmats))
   allocate(Sreal(Nlat,Lreal))
   allocate(Gmats(Nlat,Lmats))
@@ -116,7 +112,9 @@ program ed_slab
      iloop=iloop+1
      if(mpiID==0) call start_loop(iloop,nloop,"DMFT-loop")
      bath_old=bath
-     call ed_solve_impurity(bath,elocal,epsik,wt,Delta,Gmats,Greal,Smats,Sreal)
+     call ed_solve_impurity(bath,Smats,Sreal,nii,dii,eloc=elocal,usite=usite)
+     call ed_get_gloc_slab(epsik,wt,Gmats,Greal,Smats,Sreal,eloc=elocal)
+     call ed_fit_bath(bath,Delta,Gmats,Greal,Smats,Sreal,eloc=elocal)
      bath=wmixing*bath + (1.d0-wmixing)*bath_old
      if(rdmft_phsym)then
         do i=1,Nlat
@@ -188,7 +186,7 @@ contains
           call store_data("rhoVSisite.data",rii,(/(dble(i),i=1,Nlat)/))
           call store_data("sigmaVSisite.data",sii,(/(dble(i),i=1,Nlat)/))
           call store_data("zetaVSisite.data",zii,(/(dble(i),i=1,Nlat)/))
-          call store_data("erandomVSisite.data",erandom,(/(dble(i),i=1,Nlat)/))
+          call store_data("elocalVSisite.data",elocal,(/(dble(i),i=1,Nlat)/))
        end if
 
     end if

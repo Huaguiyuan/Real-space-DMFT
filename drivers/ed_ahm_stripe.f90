@@ -21,7 +21,7 @@ program ed_stripe
   complex(8),allocatable,dimension(:,:,:) :: Smats,Sreal !self_energies
   complex(8),allocatable,dimension(:,:,:) :: Gmats,Greal !local green's functions
   complex(8),allocatable,dimension(:,:,:) :: Delta      
-  real(8),allocatable,dimension(:)        :: erandom,Usite
+  real(8),allocatable,dimension(:)        :: Usite
   real(8),allocatable,dimension(:,:,:)    :: bath,bath_old
   logical                                 :: converged
   real(8)                                 :: Uperiod,Uamplitude
@@ -67,10 +67,8 @@ program ed_stripe
   wm(:)  = pi/beta*real(2*arange(1,Lmats)-1,8)
   !+----------------------------------+!
 
-  !random energies tbr
-  allocate(erandom(Nlat),Usite(Nlat))
-  erandom=0.d0
-  !
+  !Local values of the interaction: winding attraction
+  allocate(Usite(Nlat))
   Usite=Uloc(1)
   if(mpiID==0) open(unit=77,file='Ustripe.ed')
   do row=0,Nrow-1
@@ -104,7 +102,11 @@ program ed_stripe
      iloop=iloop+1
      if(mpiID==0)call start_loop(iloop,nloop,"DMFT-loop")
      bath_old=bath
-     call ed_solve_sc_impurity(bath,erandom,Delta,Gmats,Greal,Smats,Sreal,Usite)
+     !reshuffle to indep sites here
+     call ed_solve_impurity(bath,Smats,Sreal,nii,dii,pii,usite=usite)
+     call ed_get_gloc_lattice(Gmats,Greal,Smats,Sreal)
+     !reshuffle to indep sites here
+     call ed_fit_bath(bath,Delta,Gmats,Greal,Smats,Sreal)
      bath=wmixing*bath + (1.d0-wmixing)*bath_old
      if(rdmft_phsym)then
         do i=1,Nlat
@@ -242,7 +244,6 @@ contains
           call store_data("rhoVSisite.data",rii,(/(dble(i),i=1,Nlat)/))
           call store_data("sigmaVSisite.data",sii,(/(dble(i),i=1,Nlat)/))
           call store_data("zetaVSisite.data",zii,(/(dble(i),i=1,Nlat)/))
-          call store_data("erandomVSisite.data",erandom,(/(dble(i),i=1,Nlat)/))
           call splot3d("3d_nVSij.data",grid_x,grid_y,nij)
           call splot3d("3d_doccVSij.data",grid_x,grid_y,dij)
           call splot3d("3d_phiVSij.data",grid_x,grid_y,pij)

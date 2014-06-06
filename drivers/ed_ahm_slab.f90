@@ -21,12 +21,12 @@ program ed_slab
   complex(8),allocatable,dimension(:,:,:) :: Smats,Sreal !self_energies
   complex(8),allocatable,dimension(:,:,:) :: Gmats,Greal !local green's functions
   complex(8),allocatable,dimension(:,:,:) :: Delta      
-  real(8),allocatable,dimension(:)        :: erandom,Usite
+  real(8),allocatable,dimension(:)        :: Usite,Elocal
   real(8),allocatable,dimension(:,:,:)    :: bath,bath_old
   real(8),allocatable,dimension(:)        :: epsik,wt
   logical                                 :: converged
   real(8)                                 :: Uperiod,Uamplitude
-  real(8)                                 :: r,wmixing
+  real(8)                                 :: r,wmixing,deltaV
   integer                                 :: i,is,iloop
   integer                                 :: Nb(2),Nx,Lk
 
@@ -52,6 +52,7 @@ program ed_slab
   call parse_input_variable(Uperiod,"Uperiod","inputRDMFT.in",default=dble(Nlat))
   call parse_input_variable(Uamplitude,"Uamplitude","inputRDMFT.in",default=0.d0)
   call parse_input_variable(wmixing,"WMIXING","inputRDMFT.in",default=1.d0)
+  call parse_input_variable(DeltaV,"BIAS","inputRDMFT.in",default=0.d0)
 
   call save_input_file("inputRDMFT.in")
 
@@ -71,15 +72,14 @@ program ed_slab
   epsik= square_lattice_dispersion_array(Lk,ts)
   call get_free_dos(epsik,wt)
 
-  !random energies tbr
-  allocate(erandom(Nlat),Usite(Nlat))
-  erandom=0.d0
+
+  allocate(Usite(Nlat),elocal(Nlat))
   Usite=Uloc(1)
   do i=1,Nlat
      Usite(i) = Usite(i) + Uamplitude*dsin(pi*dble(i-1)/dble(Nlat-1)*Uperiod)
-     write(77,*) i,Usite(i)
+     elocal(i)= DeltaV*0.5d0 - DeltaV/dble(Nlat-1)*dble(i-1) 
+     write(77,*) i,Usite(i),elocal(i)
   end do
-
 
   !+- allocate a bath for each impurity -+!
   Nb=get_bath_size()
@@ -103,7 +103,9 @@ program ed_slab
      iloop=iloop+1
      if(mpiID==0) call start_loop(iloop,nloop,"DMFT-loop")
      bath_old=bath
-     call ed_solve_sc_impurity(bath,erandom,epsik,wt,Delta,Gmats,Greal,Smats,Sreal,Usite)
+     call ed_solve_impurity(bath,Smats,Sreal,nii,dii,pii,eloc=elocal,usite=usite)
+     call ed_get_gloc_slab(epsik,wt,Gmats,Greal,Smats,Sreal,eloc=elocal)
+     call ed_fit_bath(bath,Delta,Gmats,Greal,Smats,Sreal,eloc=elocal)
      bath=wmixing*bath + (1.d0-wmixing)*bath_old
      if(rdmft_phsym)then
         do i=1,Nlat
@@ -188,7 +190,6 @@ contains
           call store_data("rhoVSisite.data",rii,(/(dble(i),i=1,Nlat)/))
           call store_data("sigmaVSisite.data",sii,(/(dble(i),i=1,Nlat)/))
           call store_data("zetaVSisite.data",zii,(/(dble(i),i=1,Nlat)/))
-          call store_data("erandomVSisite.data",erandom,(/(dble(i),i=1,Nlat)/))
        end if
 
     end if

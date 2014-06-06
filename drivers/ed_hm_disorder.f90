@@ -88,13 +88,15 @@ program ed_hm_disorder
   do while(.not.converged.AND.iloop<nloop) 
      iloop=iloop+1
      if(mpiID==0)call start_loop(iloop,nloop,"DMFT-loop",unit=LOGfile)
-     call ed_solve_impurity(bath,erandom,Delta,Gmats,Greal,Smats,Sreal)
-     if(rdmft_phsym)then
+     call ed_solve_impurity(bath,Smats,Sreal,nii,dii,eloc=erandom)
+     call ed_get_gloc_lattice(Gmats,Greal,Smats,Sreal,eloc=erandom)
+     call ed_fit_bath(bath,Delta,Gmats,Greal,Smats,Sreal,eloc=erandom)
+     bath=wmixing*bath + (1.d0-wmixing)*bath_old ; bath_old = bath
+     if(rdmft_phsym.AND.wdis==0.d0)then
         do i=1,Nlat
-           call ph_symmetrize_bath(bath_(i,:,:))
+           call ph_symmetrize_bath(bath(i,:,:))
         enddo
      endif
-     bath=wmixing*bath + (1.d0-wmixing)*bath_old ; bath_old = bath
      if(mpiID==0)converged = check_convergence(Delta(:,:),dmft_error,Nsuccess,nloop,index=2,total=2,id=0,file="DELTAerror.err",reset=.false.)
      if(mpiID==0)converged = check_convergence_local(dii,dmft_error,Nsuccess,nloop,index=1,total=2,id=0,file="error.err")
      call MPI_BCAST(converged,1,MPI_LOGICAL,0,MPI_COMM_WORLD,mpiERR)

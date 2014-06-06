@@ -92,13 +92,16 @@ program ed_ahm_disorder
      iloop=iloop+1
      if(mpiID==0)call start_loop(iloop,nloop,"DMFT-loop",unit=LOGfile)
      call MPI_Barrier(MPI_COMM_WORLD,mpiERR)
-     call ed_solve_sc_impurity(bath,erandom,Delta,Gmats,Greal,Smats,Sreal)
+     bath_old = bath
+     call ed_solve_impurity(bath,Smats,Sreal,nii,dii,pii,eloc=erandom)
+     call ed_get_gloc_lattice(Gmats,Greal,Smats,Sreal,eloc=erandom)
+     call ed_fit_bath(bath,Delta,Gmats,Greal,Smats,Sreal,eloc=erandom)
+     bath = wmixing*bath + (1.d0-wmixing)*bath_old ; 
      if(rdmft_phsym)then
         do i=1,Nlat
-           call ph_symmetrize_bath(bath_(i,:,:))
+           call ph_symmetrize_bath(bath(i,:,:))
         enddo
      endif
-     bath = wmixing*bath + (1.d0-wmixing)*bath_old ; bath_old = bath
      if(mpiID==0)converged = check_convergence_local(bath(:,1,:),dmft_error,Nsuccess,nloop,index=2,total=3,id=0,file="BATHerror.err",reset=.false.)
      if(mpiID==0)converged = check_convergence(Delta(1,:,:),dmft_error,Nsuccess,nloop,index=3,total=3,id=0,file="DELTAerror.err",reset=.false.)
      if(mpiID==0)converged = check_convergence_local(pii,dmft_error,Nsuccess,nloop,index=1,total=3,id=0,file="error.err")
